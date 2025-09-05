@@ -1,29 +1,27 @@
-# README #
+# Knowledge Assistant
 
-This README would normally document whatever steps are necessary to get your application up and running.
+This README documents the steps to set up and run the Knowledge Assistant application.
 
-### What is this repository for? ###
+---
 
-* Quick summary
-* Version
-* [Learn Markdown](https://bitbucket.org/tutorials/markdowndemo)
+## 📦 What is this repository for?
 
-### How do I get set up? ###
+- AI-powered document search and Q&A assistant
+- Uses embeddings + FAISS for fast retrieval
+- Supports Hugging Face models like **Phi-2** for local inference
 
-* Summary of set up
-* Configuration
-* Dependencies
-* Database configuration
-* How to run tests
-* Deployment instructions
+---
 
-### Contribution guidelines ###
+## 🚀 How do I get set up?
 
-* Writing tests
-* Code review
-* Other guidelines
+### 📁 Project Setup
 
-### Who do I talk to? ###
+1. Clone the repository:
 
-* Repo owner or admin
-* Other community or team contact
+```bash
+git clone <your-repo-url>
+cd knowledgeassistant
+python3 -m venv venv
+source venv/bin/activate
+mkdir -p models/phi-2
+huggingface-cli download microsoft/phi-2 --local-dir models/phi-2 --local-dir-use-symlinks False
