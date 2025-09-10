@@ -577,9 +577,9 @@
 
     <div class="chat-container">
         <div class="sidebar">
-            <button class="new-chat-btn" onclick="location.href='{% url 'chatbot:create_chat_session' %}'">
+            <a class="new-chat-btn" href="{% url 'chatbot:create_chat_session' %}">
                 <i class="fas fa-plus me-2"></i>New Chat
-            </button>
+            </a>
             <div class="chat-history">
                 <div class="search-container">
                     <input type="text" class="search-input" id="chat-search" placeholder="Search chat history...">
@@ -1013,10 +1013,12 @@
                 sources.forEach(source => {
                     const sourceItem = document.createElement('li');
                     sourceItem.className = 'source-item';
+                    const confidence = source.confidence ? ` <span class="badge bg-secondary ms-1">${this.escapeHtml(source.confidence)}</span>` : '';
+                    const similarity = source.similarity ? ` <span class="source-similarity">${(source.similarity * 100).toFixed(1)}%<\/span>` : '';
+                    const link = source.url ? ` <a href="${this.escapeHtml(source.url)}" target="_blank" rel="noopener">View</a>` : '';
                     sourceItem.innerHTML = `
                         <span class="source-title">${this.escapeHtml(source.title)}</span>
-                        (Page ${source.page})
-                        ${source.similarity ? `<span class="source-similarity">${(source.similarity * 100).toFixed(1)}%</span>` : ''}
+                        (Page ${source.page})${similarity}${confidence}${link}
                     `;
                     sourcesList.appendChild(sourceItem);
                 });
