@@ -3,6 +3,7 @@
 {% block title %}Knowledge Base - Dashboard{% endblock %}
 
 {% block extra_css %}
+{% load static %}
 <style>
     /* CSS Custom Properties */
     :root {
@@ -556,6 +557,7 @@
         background: var(--primary-dark);
     }
 </style>
+<link rel="stylesheet" href="{% static 'css/healthjustice.css' %}">
 {% endblock %}
 
 {% block content %}
