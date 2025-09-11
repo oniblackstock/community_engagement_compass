@@ -102,6 +102,31 @@ class ChatMessage(models.Model):
         return self.message_type == 'system'
 
 
+class ChatMessageSource(models.Model):
+    """Stores per-message source metadata (best practice for persistence).
+
+    We purposely keep the existing ManyToMany `ChatMessage.sources` for backward
+    compatibility in templates and exports, while this model records similarity,
+    confidence label, and an optional URL for viewing the source.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.ForeignKey(ChatMessage, related_name='source_links', on_delete=models.CASCADE)
+    chunk = models.ForeignKey(DocumentChunk, related_name='message_links', on_delete=models.CASCADE)
+    similarity = models.FloatField(default=0.0)
+    confidence = models.CharField(max_length=20, blank=True, null=True)
+    url = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-similarity']
+        indexes = [
+            models.Index(fields=['message']),
+            models.Index(fields=['chunk']),
+        ]
+
+    def __str__(self):
+        return f"Source for {self.message_id} -> {self.chunk_id} ({self.similarity:.3f})"
+
+
 @receiver(post_save, sender=ChatMessage)
 def update_session_title(sender, instance, created, **kwargs):
     """Update chat session title based on the first user message"""

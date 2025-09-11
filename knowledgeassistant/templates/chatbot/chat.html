@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}AI Knowledge Assistant{% endblock %}</title>
+    {% load static %}
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -554,6 +555,7 @@
             font-size: 0.9em;
         }
     </style>
+    <link rel="stylesheet" href="{% static 'css/healthjustice.css' %}">
 </head>
 <body>
     <nav class="navbar">
@@ -577,9 +579,9 @@
 
     <div class="chat-container">
         <div class="sidebar">
-            <button class="new-chat-btn" onclick="location.href='{% url 'chatbot:create_chat_session' %}'">
+            <a class="new-chat-btn" href="{% url 'chatbot:create_chat_session' %}">
                 <i class="fas fa-plus me-2"></i>New Chat
-            </button>
+            </a>
             <div class="chat-history">
                 <div class="search-container">
                     <input type="text" class="search-input" id="chat-search" placeholder="Search chat history...">
@@ -623,7 +625,22 @@
                     </div>
                     <div class="message-content">
                         {{ message.content|linebreaks }}
-                        {% if message.sources.exists %}
+                        {% if message.source_links.all %}
+                        <div class="message-sources">
+                            <strong><i class="fas fa-book me-1"></i>Sources:</strong>
+                            <ul class="source-list">
+                                {% for link in message.source_links.all %}
+                                <li class="source-item">
+                                    <span class="source-title">{{ link.chunk.document.title }}</span>
+                                    (Page {{ link.chunk.page_number }})
+                                    {% if link.similarity %}<span class="source-similarity">{% widthratio link.similarity 1 100 %}%</span>{% endif %}
+                                    {% if link.confidence %}<span class="badge bg-secondary ms-1">{{ link.confidence }}</span>{% endif %}
+                                    {% if link.url %}<a href="{{ link.url }}" target="_blank" rel="noopener">View</a>{% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% elif message.sources.exists %}
                         <div class="message-sources">
                             <strong><i class="fas fa-book me-1"></i>Sources:</strong>
                             <ul class="source-list">
@@ -1013,10 +1030,12 @@
                 sources.forEach(source => {
                     const sourceItem = document.createElement('li');
                     sourceItem.className = 'source-item';
+                    const confidence = source.confidence ? ` <span class="badge bg-secondary ms-1">${this.escapeHtml(source.confidence)}</span>` : '';
+                    const similarity = source.similarity ? ` <span class="source-similarity">${(source.similarity * 100).toFixed(1)}%<\/span>` : '';
+                    const link = source.url ? ` <a href="${this.escapeHtml(source.url)}" target="_blank" rel="noopener">View</a>` : '';
                     sourceItem.innerHTML = `
                         <span class="source-title">${this.escapeHtml(source.title)}</span>
-                        (Page ${source.page})
-                        ${source.similarity ? `<span class="source-similarity">${(source.similarity * 100).toFixed(1)}%</span>` : ''}
+                        (Page ${source.page})${similarity}${confidence}${link}
                     `;
                     sourcesList.appendChild(sourceItem);
                 });

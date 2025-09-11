@@ -15,7 +15,7 @@ import logging
 import os
 import time
 from typing import Generator
-from .models import PDFDocument, ChatSession, ChatMessage
+from .models import PDFDocument, ChatSession, ChatMessage, ChatMessageSource
 from .services import PDFProcessingService, ChatService, EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -185,20 +185,34 @@ def send_message(request):
                 content=response_content
             )
 
-            # Add sources if chunks were used
+            # Add sources if chunks were used (UI will render as a separate block)
             sources_data = []
             if similar_chunks:
+                def similarity_to_confidence(score: float) -> str:
+                    if score >= 0.75:
+                        return 'high'
+                    if score >= 0.5:
+                        return 'medium'
+                    return 'low'
+
                 for chunk_data in similar_chunks[:2]:
                     chunk = chunk_data['chunk']
-                    assistant_message.sources.create(
-                        document=chunk.document,
-                        page_number=chunk.page_number,
-                        chunk_text=chunk.content[:200]
+                    assistant_message.sources.add(chunk)
+                    score = float(chunk_data.get('similarity', 0.0))
+                    # Persist source metadata
+                    ChatMessageSource.objects.create(
+                        message=assistant_message,
+                        chunk=chunk,
+                        similarity=score,
+                        confidence=similarity_to_confidence(score),
+                        url=request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
                     )
                     sources_data.append({
                         'title': chunk.document.title,
                         'page': chunk.page_number,
-                        'similarity': chunk_data['similarity']
+                        'similarity': score,
+                        'confidence': similarity_to_confidence(score),
+                        'url': request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
                     })
 
             return JsonResponse({
@@ -239,21 +253,36 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                 # Add sources if available
                 sources_data = []
                 if similar_chunks:
+                    def similarity_to_confidence(score: float) -> str:
+                        if score >= 0.75:
+                            return 'high'
+                        if score >= 0.5:
+                            return 'medium'
+                        return 'low'
+
                     for chunk_data in similar_chunks[:2]:
                         chunk = chunk_data['chunk']
-                        assistant_message.sources.create(
-                            document=chunk.document,
-                            page_number=chunk.page_number,
-                            chunk_text=chunk.content[:200]
+                        assistant_message.sources.add(chunk)
+                        score = float(chunk_data.get('similarity', 0.0))
+                        ChatMessageSource.objects.create(
+                            message=assistant_message,
+                            chunk=chunk,
+                            similarity=score,
+                            confidence=similarity_to_confidence(score),
+                            url=request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
                         )
                         sources_data.append({
                             'title': chunk.document.title,
                             'page': chunk.page_number,
-                            'similarity': chunk_data['similarity']
+                            'similarity': score,
+                            'confidence': similarity_to_confidence(score),
+                            'url': request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
                         })
                 else:
                     sources_data = []
             
+            # Do not append sources into the streamed text; UI will display from payload
+
             # Send completion signal
             yield f"data: {json.dumps({
                 'type': 'complete', 
@@ -578,7 +607,7 @@ def emergency_memory_cleanup():
     gc.collect()
     
     # Restart services if needed
-    chat_service.clear_cache()
+    # chat_service.clear_cache()
     
 # Call before heavy operations
 emergency_memory_cleanup()
