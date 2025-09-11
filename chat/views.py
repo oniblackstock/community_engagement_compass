@@ -15,7 +15,7 @@ import logging
 import os
 import time
 from typing import Generator
-from .models import PDFDocument, ChatSession, ChatMessage
+from .models import PDFDocument, ChatSession, ChatMessage, ChatMessageSource
 from .services import PDFProcessingService, ChatService, EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -199,6 +199,14 @@ def send_message(request):
                     chunk = chunk_data['chunk']
                     assistant_message.sources.add(chunk)
                     score = float(chunk_data.get('similarity', 0.0))
+                    # Persist source metadata
+                    ChatMessageSource.objects.create(
+                        message=assistant_message,
+                        chunk=chunk,
+                        similarity=score,
+                        confidence=similarity_to_confidence(score),
+                        url=request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
+                    )
                     sources_data.append({
                         'title': chunk.document.title,
                         'page': chunk.page_number,
@@ -256,6 +264,13 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                         chunk = chunk_data['chunk']
                         assistant_message.sources.add(chunk)
                         score = float(chunk_data.get('similarity', 0.0))
+                        ChatMessageSource.objects.create(
+                            message=assistant_message,
+                            chunk=chunk,
+                            similarity=score,
+                            confidence=similarity_to_confidence(score),
+                            url=request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
+                        )
                         sources_data.append({
                             'title': chunk.document.title,
                             'page': chunk.page_number,

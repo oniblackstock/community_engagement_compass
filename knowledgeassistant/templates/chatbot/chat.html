@@ -625,7 +625,22 @@
                     </div>
                     <div class="message-content">
                         {{ message.content|linebreaks }}
-                        {% if message.sources.exists %}
+                        {% if message.source_links.all %}
+                        <div class="message-sources">
+                            <strong><i class="fas fa-book me-1"></i>Sources:</strong>
+                            <ul class="source-list">
+                                {% for link in message.source_links.all %}
+                                <li class="source-item">
+                                    <span class="source-title">{{ link.chunk.document.title }}</span>
+                                    (Page {{ link.chunk.page_number }})
+                                    {% if link.similarity %}<span class="source-similarity">{% widthratio link.similarity 1 100 %}%</span>{% endif %}
+                                    {% if link.confidence %}<span class="badge bg-secondary ms-1">{{ link.confidence }}</span>{% endif %}
+                                    {% if link.url %}<a href="{{ link.url }}" target="_blank" rel="noopener">View</a>{% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% elif message.sources.exists %}
                         <div class="message-sources">
                             <strong><i class="fas fa-book me-1"></i>Sources:</strong>
                             <ul class="source-list">
