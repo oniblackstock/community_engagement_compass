@@ -15,8 +15,8 @@ import logging
 import os
 import time
 from typing import Generator
-from .models import PDFDocument, ChatSession, ChatMessage, ChatMessageSource, Feedback
-from .forms import FeedbackForm
+from .models import PDFDocument, ChatSession, ChatMessage, ChatMessageSource, Feedback, SurveyResponse
+from .forms import FeedbackForm, SurveyFeedbackForm
 from .services import PDFProcessingService, ChatService, EmbeddingService
 from django.utils.decorators import method_decorator
 
@@ -453,6 +453,7 @@ def admin_dashboard(request):
         cache.set(cache_key, total_chunks, 300)
 
     feedback_list = Feedback.objects.select_related('user').order_by('-created_at')[:20]
+    recent_survey_responses = SurveyResponse.objects.select_related('user').order_by('-created_at')[:20]
 
     context = {
         'documents': documents_page,
@@ -463,33 +464,31 @@ def admin_dashboard(request):
         'total_chunks': total_chunks,
         'paginator': paginator,
         'feedback_list': feedback_list,
+        'recent_survey_responses': recent_survey_responses,
     }
     return render(request, 'chatbot/admin_dashboard.html', context)
 
 
 @login_required
 def feedback_view(request):
+    """Render and process the Community Engagement Compass Feedback Survey."""
     if request.method == 'POST':
-        form = FeedbackForm(request.POST)
+        form = SurveyFeedbackForm(request.POST)
         if form.is_valid():
-            # Prefer provided name; if missing and user is authenticated, fallback smartly
-            provided_name = form.cleaned_data.get('name') or ''
-            if not provided_name and request.user.is_authenticated:
-                provided_name = request.user.get_full_name() or request.user.email or request.user.username
-            provided_email = form.cleaned_data.get('email') or (request.user.email if request.user.is_authenticated else '')
-            Feedback.objects.create(
+            SurveyResponse.objects.create(
                 user=request.user if request.user.is_authenticated else None,
-                name=provided_name,
-                email=provided_email,
-                message=form.cleaned_data['message'],
+                ease_of_use=form.cleaned_data['ease_of_use'],
+                relevance=form.cleaned_data['relevance'],
+                trust=form.cleaned_data['trust'],
+                citations_helpfulness=form.cleaned_data['citations_helpfulness'],
+                likelihood_of_use=form.cleaned_data['likelihood_of_use'],
+                additional_sources=form.cleaned_data.get('additional_sources', ''),
+                open_feedback=form.cleaned_data.get('open_feedback', ''),
             )
-            messages.success(request, 'Thank you! Your feedback has been submitted.')
-            return redirect('chatbot:chat_home')
+            messages.success(request, 'Thank you for sharing your insights and feedback! To learn more about Health Justice’s offerings, visit https://healthjustice.co.')
+            return redirect('chatbot:feedback')
     else:
-        initial = {}
-        if request.user.is_authenticated:
-            initial = {"name": request.user.get_full_name() or request.user.email or request.user.username, "email": request.user.email}
-        form = FeedbackForm(initial=initial)
+        form = SurveyFeedbackForm()
 
     return render(request, 'chatbot/feedback.html', {"form": form})
 

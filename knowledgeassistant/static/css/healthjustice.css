@@ -1,20 +1,20 @@
 :root {
-  /* Health Justice theme base colors from screenshot (navy + olive) */
-  --hj-primary: #232b66;           /* deep navy */
-  --hj-primary-light: #2e3a8a;     /* lighter navy for gradient end */
-  --hj-primary-dark: #1b2352;      /* darker navy */
-  --hj-accent: #717a4b;            /* olive banner/accent */
-  --hj-accent-strong: #5f6a3d;     /* darker olive for hovers */
-  --hj-secondary: #475569;         /* slate */
-  --hj-success: #0f766e;
+  /* Client palette */
+  --hj-primary: #2C2E65;           /* blue */
+  --hj-primary-light: #3a3d84;     /* lighter blue */
+  --hj-primary-dark: #232554;      /* darker blue */
+  --hj-accent: #555C38;            /* green */
+  --hj-accent-strong: #48502f;     /* darker green for hovers */
+  --hj-secondary: #905E7B;         /* additional accent */
+  --hj-success: #2C2E65;           /* align success tint to brand */
   --hj-danger: #b91c1c;
-  --hj-bg-light: #f7f8fb;          /* subtle light background */
-  --hj-border: #e0e4ef;
+  --hj-bg-light: #D7D8E2;          /* subtle light background */
+  --hj-border: #D7D8E2;
 
-  /* Useful tints of primary */
-  --hj-tint-02: rgba(14, 92, 107, 0.02);
-  --hj-tint-05: rgba(14, 92, 107, 0.05);
-  --hj-tint-10: rgba(14, 92, 107, 0.10);
+  /* Useful tints of primary (computed approximations) */
+  --hj-tint-02: rgba(44, 46, 101, 0.02);
+  --hj-tint-05: rgba(44, 46, 101, 0.05);
+  --hj-tint-10: rgba(44, 46, 101, 0.10);
 }
 
 /* Map project-wide variables to Health Justice palette */
@@ -27,7 +27,7 @@
   --secondary-color: var(--hj-secondary);
   --success-color: var(--hj-success);
   --danger-color: var(--hj-danger);
-  --warning-color: var(--hj-accent);
+  --warning-color: var(--hj-secondary);
   --dark-bg: #0f172a;
   --light-bg: var(--hj-bg-light);
   --border-color: var(--hj-border);
@@ -43,7 +43,7 @@
   --primary-dark: var(--hj-primary-dark);
   --secondary: var(--hj-secondary);
   --success: var(--hj-success);
-  --warning: var(--hj-accent);
+  --warning: var(--hj-secondary);
   --danger: var(--hj-danger);
   --bg-light: var(--hj-bg-light);
   --bg-white: #ffffff;
@@ -61,12 +61,12 @@
 .navbar { background: linear-gradient(135deg, var(--hj-primary), var(--hj-primary-light)) !important; }
 .new-chat-btn { background: linear-gradient(135deg, var(--hj-primary), var(--hj-accent)) !important; }
 .new-chat-btn:hover { background: linear-gradient(135deg, var(--hj-accent-strong), var(--hj-primary)) !important; }
-.chat-header { background: linear-gradient(135deg, rgba(35,43,102,0.06), rgba(113,122,75,0.10)) !important; }
-.chat-history-item:hover { background: rgba(113, 122, 75, 0.10) !important; }
-.chat-history-item.active { background: rgba(35, 43, 102, 0.10) !important; border-left-color: var(--hj-accent) !important; }
-.message-sources { border-left-color: var(--hj-accent) !important; background: rgba(113,122,75,0.08) !important; }
+.chat-header { background: linear-gradient(135deg, rgba(44,46,101,0.06), rgba(85,92,56,0.10)) !important; }
+.chat-history-item:hover { background: rgba(85, 92, 56, 0.10) !important; }
+.chat-history-item.active { background: rgba(44, 46, 101, 0.10) !important; border-left-color: var(--hj-accent) !important; }
+.message-sources { border-left-color: var(--hj-accent) !important; background: rgba(44,46,101,0.06) !important; }
 .source-title { color: var(--hj-primary) !important; }
-.source-similarity { background: rgba(15, 118, 110, 0.10) !important; color: var(--hj-success) !important; }
+.source-similarity { background: rgba(44, 46, 101, 0.10) !important; color: var(--hj-success) !important; }
 .send-button { background: var(--hj-primary) !important; }
 .send-button:hover:not(:disabled) { background: var(--hj-accent-strong) !important; }
 .typing-indicator { border-color: var(--hj-border) !important; }

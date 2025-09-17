@@ -173,3 +173,56 @@ class Feedback(models.Model):
 
     def __str__(self):
         return f"Feedback from {self.name} <{self.email}>"
+
+
+class SurveyResponse(models.Model):
+    """Community Engagement Compass Feedback Survey response."""
+    EASE_CHOICES = [
+        ("easy", "Easy"),
+        ("neutral", "Neutral"),
+        ("difficult", "Difficult"),
+    ]
+
+    RELEVANCE_CHOICES = [
+        ("relevant", "Relevant"),
+        ("neutral", "Neutral"),
+        ("not_relevant", "Not relevant"),
+    ]
+
+    TRUST_CHOICES = [
+        ("confident", "Confident"),
+        ("neutral", "Neutral"),
+        ("not_confident", "Not confident"),
+    ]
+
+    CITATIONS_CHOICES = [
+        ("helpful", "Helpful"),
+        ("neutral", "Neutral"),
+        ("not_helpful", "Not helpful"),
+    ]
+
+    LIKELIHOOD_CHOICES = [
+        ("likely", "Likely"),
+        ("neutral", "Neutral"),
+        ("unlikely", "Unlikely"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    ease_of_use = models.CharField(max_length=16, choices=EASE_CHOICES)
+    relevance = models.CharField(max_length=16, choices=RELEVANCE_CHOICES)
+    trust = models.CharField(max_length=16, choices=TRUST_CHOICES)
+    citations_helpfulness = models.CharField(max_length=16, choices=CITATIONS_CHOICES)
+    likelihood_of_use = models.CharField(max_length=16, choices=LIKELIHOOD_CHOICES)
+    additional_sources = models.TextField(blank=True, null=True)
+    open_feedback = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self):
+        return f"SurveyResponse {self.id} ({self.created_at:%Y-%m-%d %H:%M})"

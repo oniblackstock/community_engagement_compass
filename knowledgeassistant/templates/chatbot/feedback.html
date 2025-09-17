@@ -1,7 +1,7 @@
 {% extends "chatbot/base.html" %}
 {% load static i18n %}
 
-{% block title %}{% trans "Feedback" %}{% endblock %}
+{% block title %}{% trans "Community Engagement Compass Feedback Survey" %}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/healthjustice.css' %}">
@@ -75,9 +75,16 @@
 <div class="feedback-container">
   <div class="feedback-card">
     <div class="header">
-      <h5>{% trans "Send Feedback" %}</h5>
+      <h5>{% trans "Community Engagement Compass Feedback Survey – We want to hear from you!" %}</h5>
     </div>
     <div class="body">
+      <p class="mb-3">
+        {% trans "We are testing this new resource, Community Engagement Compass, designed to support healthcare and public health professionals and organizations in applying trusted community engagement frameworks in their work." %}
+      </p>
+      <p class="mb-4">
+        {% trans "Your feedback will help us improve this proof-of-concept so it can better meet the needs of people and organizations working to advance health equity through community partnerships. The survey should take less than 2 minutes to complete. Thank you in advance for your time." %}
+      </p>
+
       <form method="post" action="{% url 'chatbot:feedback' %}">
         {% csrf_token %}
 
@@ -87,33 +94,65 @@
           {% endfor %}
         {% endif %}
 
-        <div class="mb-3">
-          <label for="id_name" class="form-label">{% trans "Name" %}</label>
-          <input type="text" name="name" id="id_name" class="form-control" required>
-          {% if form.name.errors %}
-            <div class="text-danger small">{{ form.name.errors|striptags }}</div>
+        <div class="mb-4">
+          <label class="form-label">{% trans "1. Ease of Use – How easy was it to interact with the Health Engagement Navigator?" %}</label>
+          {{ form.ease_of_use }}
+          {% if form.ease_of_use.errors %}
+            <div class="text-danger small">{{ form.ease_of_use.errors|striptags }}</div>
           {% endif %}
         </div>
 
-        <div class="mb-3">
-          <label for="id_email" class="form-label">{% trans "Email" %}</label>
-          <input type="email" name="email" id="id_email" class="form-control" required>
-          {% if form.email.errors %}
-            <div class="text-danger small">{{ form.email.errors|striptags }}</div>
+        <div class="mb-4">
+          <label class="form-label">{% trans "2. Relevance of Responses – Did the information provided feel relevant to your work?" %}</label>
+          {{ form.relevance }}
+          {% if form.relevance.errors %}
+            <div class="text-danger small">{{ form.relevance.errors|striptags }}</div>
           {% endif %}
         </div>
 
-        <div class="mb-3">
-          <label for="id_message" class="form-label">{% trans "Message" %}</label>
-          <textarea name="message" id="id_message" rows="5" class="form-control" required></textarea>
-          {% if form.message.errors %}
-            <div class="text-danger small">{{ form.message.errors|striptags }}</div>
+        <div class="mb-4">
+          <label class="form-label">{% trans "3. Trust in Responses – How confident did you feel in the accuracy of the answers?" %}</label>
+          {{ form.trust }}
+          {% if form.trust.errors %}
+            <div class="text-danger small">{{ form.trust.errors|striptags }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label">{% trans "4. Usefulness of Citations & Explanations – How helpful were the citations and ‘how it got the answer’ notes?" %}</label>
+          {{ form.citations_helpfulness }}
+          {% if form.citations_helpfulness.errors %}
+            <div class="text-danger small">{{ form.citations_helpfulness.errors|striptags }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label">{% trans "5. Likelihood of Use – If developed further, how likely are you to use this resource in your professional work?" %}</label>
+          {{ form.likelihood_of_use }}
+          {% if form.likelihood_of_use.errors %}
+            <div class="text-danger small">{{ form.likelihood_of_use.errors|striptags }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mb-4">
+          <label for="id_additional_sources" class="form-label">{% trans "6. Additional Sources – What other community engagement resources or frameworks should we add to the Community Engagement Compass’s database?" %}</label>
+          {{ form.additional_sources }}
+          {% if form.additional_sources.errors %}
+            <div class="text-danger small">{{ form.additional_sources.errors|striptags }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mb-4">
+          <label for="id_open_feedback" class="form-label">{% trans "7. Open Feedback – What worked well for you, and what would you improve about the Community Engagement Compass?" %}</label>
+          {{ form.open_feedback }}
+          {% if form.open_feedback.errors %}
+            <div class="text-danger small">{{ form.open_feedback.errors|striptags }}</div>
           {% endif %}
         </div>
 
         <div class="d-grid">
           <button type="submit" class="btn btn-primary-ka">
-            {% trans "Submit Feedback" %}
+            {% trans "Submit" %}
           </button>
         </div>
       </form>
