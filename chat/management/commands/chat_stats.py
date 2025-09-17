@@ -108,7 +108,8 @@ class Command(BaseCommand):
             if top_users:
                 self.stdout.write('\n   Most active users:')
                 for user in top_users:
-                    self.stdout.write(f'     {user.username}: {user.session_count} sessions')
+                    display_name = user.name or user.email
+                    self.stdout.write(f'     {display_name}: {user.session_count} sessions')
 
             # Largest documents
             large_docs = PDFDocument.objects.annotate(

@@ -486,7 +486,12 @@ def feedback_view(request):
                 open_feedback=form.cleaned_data.get('open_feedback', ''),
             )
             messages.success(request, 'Thank you for sharing your insights and feedback! To learn more about Health Justice’s offerings, visit https://healthjustice.co.')
-            return redirect('chatbot:feedback')
+            return render(request, 'chatbot/feedback_thanks.html', {"redirect_url": 
+                request.build_absolute_uri(
+                    # Use absolute URL for robustness
+                    redirect('chatbot:chat_home').url
+                )
+            })
     else:
         form = SurveyFeedbackForm()
 

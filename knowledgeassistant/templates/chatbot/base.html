@@ -258,5 +258,22 @@
     </script>
 
     {% block extra_js %}{% endblock %}
+    {% if messages %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            function mapLevel(tags) {
+                if (!tags) return 'info';
+                if (tags.includes('success')) return 'success';
+                if (tags.includes('warning')) return 'warning';
+                if (tags.includes('error')) return 'danger';
+                if (tags.includes('info')) return 'info';
+                return 'info';
+            }
+            {% for message in messages %}
+            showToast("{{ message|escapejs }}", mapLevel("{{ message.tags|default:'' }}"));
+            {% endfor %}
+        });
+    </script>
+    {% endif %}
 </body>
 </html>

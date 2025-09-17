@@ -3,6 +3,7 @@ from allauth.socialaccount.forms import SignupForm as SocialSignupForm
 from django.contrib.auth import forms as admin_forms
 from django.forms import EmailField
 from django.utils.translation import gettext_lazy as _
+from django import forms
 
 from .models import User
 
@@ -31,9 +32,16 @@ class UserAdminCreationForm(admin_forms.AdminUserCreationForm):  # type: ignore[
 class UserSignupForm(SignupForm):
     """
     Form that will be rendered on a user sign up section/screen.
-    Default fields will be added automatically.
-    Check UserSocialSignupForm for accounts created from social.
+    Adds a Name field and saves into the custom User model's `name`.
     """
+
+    name = forms.CharField(max_length=255, required=True, label=_("Name"))
+
+    def save(self, request):  # type: ignore[override]
+        user = super().save(request)
+        user.name = self.cleaned_data.get("name", "").strip()
+        user.save(update_fields=["name"])
+        return user
 
 
 class UserSocialSignupForm(SocialSignupForm):

@@ -570,6 +570,11 @@
             <span class="brand-text">Knowledge Base</span>
         </a>
         <div class="nav-actions">
+            <span class="nav-btn" title="Signed in as" style="width:auto; padding:0 .75rem; cursor:default;">
+                {% if request.user.is_authenticated %}
+                    {{ request.user.name|default:request.user.email }}
+                {% endif %}
+            </span>
             <a href="{% url 'chatbot:chat_home' %}" class="nav-btn" title="Chat Interface">
                 <i class="fas fa-comments"></i>
             </a>
@@ -700,7 +705,7 @@
                                 </div>
                             </div>
                         </td>
-                        <td>{{ document.uploaded_by.get_full_name|default:document.uploaded_by.username }}</td>
+                        <td>{{ document.uploaded_by.name|default:document.uploaded_by.email }}</td>
                         <td>{{ document.uploaded_at|date:"M d, Y" }}</td>
                         <td>
                             {% if document.processed %}
@@ -756,34 +761,50 @@
         </div>
     </div>
 
-    <!-- Feedback List Section -->
+    <!-- Survey Responses Section -->
     <div class="section-card" style="margin-top: var(--spacing-xl);">
         <div class="section-header">
-            <i class="section-icon fas fa-message"></i>
-            <h2 class="section-title">Recent Feedback</h2>
+            <i class="section-icon fas fa-clipboard-list"></i>
+            <h2 class="section-title">Recent Survey Responses</h2>
         </div>
         <div class="section-content">
             <div class="table-responsive">
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Message</th>
+                            <th>User</th>
+                            <th>Ease</th>
+                            <th>Relevance</th>
+                            <th>Trust</th>
+                            <th>Citations</th>
+                            <th>Likelihood</th>
+                            <th>Additional Sources</th>
+                            <th>Open Feedback</th>
                             <th>When</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for fb in feedback_list %}
+                        {% for sr in recent_survey_responses %}
                         <tr>
-                            <td>{{ fb.name }}</td>
-                            <td>{{ fb.email }}</td>
-                            <td>{{ fb.message|linebreaksbr }}</td>
-                            <td>{{ fb.created_at|date:"M d, Y H:i" }}</td>
+                            <td>
+                                {% if sr.user %}
+                                    {{ sr.user.name|default:sr.user.email }}
+                                {% else %}
+                                    Anonymous
+                                {% endif %}
+                            </td>
+                            <td>{{ sr.get_ease_of_use_display }}</td>
+                            <td>{{ sr.get_relevance_display }}</td>
+                            <td>{{ sr.get_trust_display }}</td>
+                            <td>{{ sr.get_citations_helpfulness_display }}</td>
+                            <td>{{ sr.get_likelihood_of_use_display }}</td>
+                            <td>{{ sr.additional_sources|default:'-'|truncatechars:120 }}</td>
+                            <td>{{ sr.open_feedback|default:'-'|truncatechars:120 }}</td>
+                            <td>{{ sr.created_at|date:"M d, Y H:i" }}</td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="4" style="text-align:center; padding:1rem; color: var(--secondary);">No feedback yet.</td>
+                            <td colspan="9" style="text-align:center; padding:1rem; color: var(--secondary);">No survey responses yet.</td>
                         </tr>
                         {% endfor %}
                     </tbody>

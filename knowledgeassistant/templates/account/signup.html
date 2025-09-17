@@ -64,6 +64,14 @@
         {% endif %}
 
         <div class="mb-3">
+          <label class="form-label" for="id_name">{% trans "Name" %}</label>
+          <input type="text" name="name" id="id_name" class="form-control" required>
+          {% if form.name.errors %}
+            <div class="text-danger small">{{ form.name.errors|striptags }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mb-3">
           <label class="form-label" for="id_email">{% trans "Email" %}</label>
           <input type="email" name="email" id="id_email" class="form-control" required>
           {% if form.email.errors %}
