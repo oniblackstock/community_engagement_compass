@@ -554,6 +554,34 @@
         .admin-btn i {
             font-size: 0.9em;
         }
+
+        /* Example (static) message styling */
+        .message.example .message-content {
+            background: #fffaf0; /* dimmer warm background */
+            border: 1px dashed rgba(245, 158, 11, 0.6);
+            color: var(--secondary-color);
+            position: relative;
+            opacity: 0.9;
+        }
+        .example-badge {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: var(--warning-color, #f59e0b);
+            color: #fff;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .example-note {
+            font-size: 0.85rem;
+            color: var(--secondary-color);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
     </style>
     <link rel="stylesheet" href="{% static 'css/healthjustice.css' %}">
 </head>
@@ -568,6 +596,26 @@
                 <a href="{% url 'chatbot:admin_dashboard' %}" class="btn admin-btn me-3">
                     <i class="fas fa-chart-line me-2"></i>
                     <span class="d-none d-md-inline">Dashboard</span>
+                </a>
+                {% else %}
+                <a href="{% url 'chatbot:user_dashboard' %}" class="btn admin-btn me-3">
+                    <i class="fas fa-folder-open me-2"></i>
+                    <span class="d-none d-md-inline">My Docs</span>
+                </a>
+                {% endif %}
+                <a href="{% url 'chatbot:feedback' %}" class="btn admin-btn me-3">
+                    <i class="fas fa-message me-2"></i>
+                    <span class="d-none d-md-inline">Feedback</span>
+                </a>
+                {% if request.user.is_authenticated %}
+                <a href="{% url 'account_logout' %}" class="btn admin-btn">
+                    <i class="fas fa-right-from-bracket me-2"></i>
+                    <span class="d-none d-md-inline">Logout</span>
+                </a>
+                {% else %}
+                <a href="{% url 'account_login' %}" class="btn admin-btn">
+                    <i class="fas fa-right-to-bracket me-2"></i>
+                    <span class="d-none d-md-inline">Login</span>
                 </a>
                 {% endif %}
                 <button class="btn text-white d-md-none" id="sidebar-toggle">
@@ -656,6 +704,33 @@
                     </div>
                 </div>
                 {% endfor %}
+
+                <!-- Example assistant response to demonstrate format -->
+                <div id="example-message" class="message assistant example{% if messages %} d-none{% endif %}">
+                    <div class="avatar"><i class="fas fa-robot"></i></div>
+                    <div class="message-content">
+                        <span class="example-badge">Example</span>
+                        <div class="example-note"><i class="fas fa-lightbulb"></i>Static example to show format; real answers will vary.</div>
+                        Here is an example response. The assistant provides a clear, concise answer using the uploaded documents and cites its sources below. The response can include explanations, bullet points, and code/text snippets.
+                        <div class="message-sources" style="margin-top: 1rem;">
+                            <strong><i class="fas fa-book me-1"></i>Sources:</strong>
+                            <ul class="source-list">
+                                <li class="source-item">
+                                    <span class="source-title">Employee Handbook (2024)</span>
+                                    (Page 12)
+                                    <span class="source-similarity">92.3%</span>
+                                    <span class="badge bg-secondary ms-1">high</span>
+                                </li>
+                                <li class="source-item">
+                                    <span class="source-title">Benefits Policy Overview</span>
+                                    (Page 3)
+                                    <span class="source-similarity">81.7%</span>
+                                    <span class="badge bg-secondary ms-1">medium</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="chat-input-container">
@@ -1102,6 +1177,20 @@
         document.addEventListener('DOMContentLoaded', function() {
             window.chatInterface = new EnhancedChatInterface();
             console.log('Enhanced chat interface initialized with streaming support');
+
+            // Show/Hide example message depending on whether there are any real messages
+            const example = document.getElementById('example-message');
+            const chatMessages = document.getElementById('chat-messages');
+            function toggleExampleVisibility() {
+                if (!example) return;
+                const hasRealMessage = !!chatMessages.querySelector('.message:not(.example)');
+                example.classList.toggle('d-none', hasRealMessage);
+            }
+            toggleExampleVisibility();
+
+            // Observe future message changes (e.g., when switching sessions or sending messages)
+            const observer = new MutationObserver(toggleExampleVisibility);
+            observer.observe(chatMessages, { childList: true, subtree: true });
         });
 
         // Legacy compatibility - keep the old functions working

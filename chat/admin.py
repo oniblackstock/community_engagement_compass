@@ -1,6 +1,6 @@
 
 from django.contrib import admin
-from .models import PDFDocument, DocumentChunk, ChatSession, ChatMessage, EmbeddingIndex
+from .models import PDFDocument, DocumentChunk, ChatSession, ChatMessage, EmbeddingIndex, Feedback
 
 
 @admin.register(PDFDocument)
@@ -60,3 +60,10 @@ class EmbeddingIndexAdmin(admin.ModelAdmin):
     list_display = ['created_at', 'dimension', 'total_vectors', 'is_active']
     list_filter = ['is_active', 'created_at']
     readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(Feedback)
+class FeedbackAdmin(admin.ModelAdmin):
+    list_display = ("name", "email", "user", "created_at")
+    search_fields = ("name", "email", "message")
+    list_filter = ("created_at",)

@@ -573,8 +573,14 @@
             <a href="{% url 'chatbot:chat_home' %}" class="nav-btn" title="Chat Interface">
                 <i class="fas fa-comments"></i>
             </a>
+            <a href="{% url 'chatbot:feedback' %}" class="nav-btn" title="Feedback">
+                <i class="fas fa-message"></i>
+            </a>
             <a href="{% url 'users:detail' request.user.pk %}" class="nav-btn" title="Profile Settings">
                 <i class="fas fa-user-circle"></i>
+            </a>
+            <a href="{% url 'account_logout' %}" class="nav-btn" title="Logout">
+                <i class="fas fa-right-from-bracket"></i>
             </a>
         </div>
     </div>
@@ -747,6 +753,42 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Feedback List Section -->
+    <div class="section-card" style="margin-top: var(--spacing-xl);">
+        <div class="section-header">
+            <i class="section-icon fas fa-message"></i>
+            <h2 class="section-title">Recent Feedback</h2>
+        </div>
+        <div class="section-content">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Message</th>
+                            <th>When</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fb in feedback_list %}
+                        <tr>
+                            <td>{{ fb.name }}</td>
+                            <td>{{ fb.email }}</td>
+                            <td>{{ fb.message|linebreaksbr }}</td>
+                            <td>{{ fb.created_at|date:"M d, Y H:i" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" style="text-align:center; padding:1rem; color: var(--secondary);">No feedback yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

@@ -15,8 +15,10 @@ import logging
 import os
 import time
 from typing import Generator
-from .models import PDFDocument, ChatSession, ChatMessage, ChatMessageSource
+from .models import PDFDocument, ChatSession, ChatMessage, ChatMessageSource, Feedback
+from .forms import FeedbackForm
 from .services import PDFProcessingService, ChatService, EmbeddingService
+from django.utils.decorators import method_decorator
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,39 @@ def chat_home(request):
         'messages': messages,
     }
     return render(request, 'chatbot/chat.html', context)
+
+
+@login_required
+def user_dashboard(request):
+    """Dashboard for regular users: upload and view only their documents."""
+    documents = PDFDocument.objects.filter(uploaded_by=request.user).order_by('-uploaded_at')
+    return render(request, 'chatbot/user_dashboard.html', {
+        'documents': documents,
+    })
+
+
+@login_required
+def user_upload_pdf(request):
+    if request.method == 'POST':
+        files = request.FILES.getlist('pdf_files')
+        if not files:
+            messages.error(request, 'Please select at least one PDF file.')
+            return redirect('chatbot:user_dashboard')
+        for file in files:
+            if not file.name.lower().endswith('.pdf'):
+                continue
+            try:
+                document = PDFDocument.objects.create(
+                    title=file.name.replace('.pdf', ''),
+                    file=file,
+                    uploaded_by=request.user
+                )
+                pdf_service = PDFProcessingService()
+                pdf_service.process_document(document)
+            except Exception as e:
+                logger.error(f"User upload error: {str(e)}", exc_info=True)
+        messages.success(request, 'Upload complete. Documents will appear once processed.')
+    return redirect('chatbot:user_dashboard')
 
 
 @login_required
@@ -417,6 +452,8 @@ def admin_dashboard(request):
         )['total_chunks'] or 0
         cache.set(cache_key, total_chunks, 300)
 
+    feedback_list = Feedback.objects.select_related('user').order_by('-created_at')[:20]
+
     context = {
         'documents': documents_page,
         'search_query': search_query,
@@ -425,8 +462,36 @@ def admin_dashboard(request):
         'pending_docs': stats['pending_docs'],
         'total_chunks': total_chunks,
         'paginator': paginator,
+        'feedback_list': feedback_list,
     }
     return render(request, 'chatbot/admin_dashboard.html', context)
+
+
+@login_required
+def feedback_view(request):
+    if request.method == 'POST':
+        form = FeedbackForm(request.POST)
+        if form.is_valid():
+            # Prefer provided name; if missing and user is authenticated, fallback smartly
+            provided_name = form.cleaned_data.get('name') or ''
+            if not provided_name and request.user.is_authenticated:
+                provided_name = request.user.get_full_name() or request.user.email or request.user.username
+            provided_email = form.cleaned_data.get('email') or (request.user.email if request.user.is_authenticated else '')
+            Feedback.objects.create(
+                user=request.user if request.user.is_authenticated else None,
+                name=provided_name,
+                email=provided_email,
+                message=form.cleaned_data['message'],
+            )
+            messages.success(request, 'Thank you! Your feedback has been submitted.')
+            return redirect('chatbot:chat_home')
+    else:
+        initial = {}
+        if request.user.is_authenticated:
+            initial = {"name": request.user.get_full_name() or request.user.email or request.user.username, "email": request.user.email}
+        form = FeedbackForm(initial=initial)
+
+    return render(request, 'chatbot/feedback.html', {"form": form})
 
 
 @staff_member_required

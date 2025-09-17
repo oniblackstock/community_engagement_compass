@@ -13,6 +13,9 @@ urlpatterns = [
     path('session/<uuid:session_id>/rename/', views.rename_session, name='rename_session'),
     path('session/<uuid:session_id>/delete/', views.delete_session, name='delete_session'),
     path('send-message/', views.send_message, name='send_message'),
+    path('feedback/', views.feedback_view, name='feedback'),
+    path('user/dashboard/', views.user_dashboard, name='user_dashboard'),
+    path('user/upload/', views.user_upload_pdf, name='user_upload_pdf'),
 
     # Admin URLs
     path('admin/dashboard/', views.admin_dashboard, name='admin_dashboard'),

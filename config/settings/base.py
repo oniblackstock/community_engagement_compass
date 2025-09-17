@@ -118,7 +118,7 @@ AUTHENTICATION_BACKENDS = [
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
 AUTH_USER_MODEL = "users.User"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-redirect-url
-LOGIN_REDIRECT_URL = "users:redirect"
+LOGIN_REDIRECT_URL = "chatbot:chat_home"
 # https://docs.djangoproject.com/en/dev/ref/settings/#login-url
 LOGIN_URL = "account_login"
 
@@ -286,7 +286,15 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_EMAIL_VERIFICATION = "none"
+# Redirects and flow control for email confirmation and logout
+LOGOUT_REDIRECT_URL = "account_login"
+# When a user confirms email while not authenticated, send to login
+ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = "account_login"
+# When a user confirms email while authenticated, send them to login to enforce flow
+ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = "account_login"
+# Do not auto-login on email confirmation; require explicit login
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = False
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_ADAPTER = "knowledgeassistant.users.adapters.AccountAdapter"
 # https://docs.allauth.org/en/latest/account/forms.html
@@ -306,3 +314,71 @@ STATICFILES_FINDERS += ["compressor.finders.CompressorFinder"]
 # Hugging Face Configuration
 HUGGINGFACE_TOKEN = os.environ.get('HUGGINGFACE_TOKEN', '')
 LLAMA_MODEL_ID = "meta-llama/Llama-2-7b-chat-hf"
+
+
+
+import os
+
+# Add these CUDA optimization settings at the top
+os.environ.update({
+    'PYTORCH_CUDA_ALLOC_CONF': 'expandable_segments:True,max_split_size_mb:512',
+    'TRANSFORMERS_VERBOSITY': 'error',
+    'TOKENIZERS_PARALLELISM': 'false',  # Prevents tokenizer warnings
+    'CUDA_LAUNCH_BLOCKING': '0',  # Don't block CUDA operations
+})
+
+ 
+
+# Add caching for better performance
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+            'CULL_FREQUENCY': 3,
+        }
+    }
+}
+
+# Logging configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'services': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'apps': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+
+DJANGO_EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST="smtp.gmail.com"
+
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER="asadraza10075@gmail.com"
+EMAIL_HOST_PASSWORD="qaxoavnzciuzksmz"
+DEFAULT_FROM_EMAIL="asadraza10075@gmail.com"
+DJANGO_READ_DOT_ENV_FILE=True
+
