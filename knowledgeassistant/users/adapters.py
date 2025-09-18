@@ -17,6 +17,17 @@ class AccountAdapter(DefaultAccountAdapter):
     def is_open_for_signup(self, request: HttpRequest) -> bool:
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
 
+    def get_signup_redirect_url(self, request: HttpRequest) -> str:  # type: ignore[override]
+        """Redirect to login with a flag so we can show a modal after signup.
+
+        When email verification is mandatory, users should be prompted to
+        check their inbox. We show this via a modal on the login page.
+        """
+        from django.urls import reverse
+
+        login_url = reverse("account_login")
+        return f"{login_url}?verification=sent"
+
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_open_for_signup(

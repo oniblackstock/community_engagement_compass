@@ -7,6 +7,12 @@
   {{ block.super }}
   <link rel="stylesheet" href="{% static 'css/healthjustice.css' %}">
   <style>
+    .ka-auth-logo {
+      height: 72px;
+      width: auto;
+      margin-bottom: 1rem;
+      filter: drop-shadow(0 1px 1px rgba(0,0,0,0.25));
+    }
     .ka-auth-card .form-label {
       font-weight: 600;
       color: var(--secondary-color);
@@ -48,10 +54,11 @@
 
 {% block content %}
   <div class="text-center mb-4">
+    <img src="{% static 'images/healthjustice-logo.webp' %}" alt="Health Justice" class="ka-auth-logo">
     <h1 class="h3 fw-bold" style="color: var(--primary-color)">
       {% trans "Create your account" %}
     </h1>
-    <p class="text-muted">{% trans "Join to use the AI Knowledge Assistant" %}</p>
+    <p class="text-muted">{% trans "Join to use the Community Engagement Compass" %}</p>
   </div>
 
   <div class="card shadow-sm border-0 ka-auth-card">

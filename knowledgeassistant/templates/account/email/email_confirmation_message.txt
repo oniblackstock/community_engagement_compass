@@ -1,0 +1,8 @@
+{% load i18n %}{% blocktrans %}Please confirm your email address for {{ current_site.name }} by clicking the link below:{% endblocktrans %}
+
+{{ activate_url }}
+
+{% trans "If you did not sign up, please ignore this email." %}
+
+{% trans "Thanks," %}
+{{ current_site.name }}

@@ -286,7 +286,10 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_EMAIL_VERIFICATION = "none"
+# Require email verification for new signups
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+# Confirm email as soon as the link is opened
+ACCOUNT_CONFIRM_EMAIL_ON_GET = True
 # Redirects and flow control for email confirmation and logout
 LOGOUT_REDIRECT_URL = "account_login"
 # When a user confirms email while not authenticated, send to login
@@ -377,8 +380,8 @@ EMAIL_HOST="smtp.gmail.com"
 
 EMAIL_PORT=587
 EMAIL_USE_TLS=True
-EMAIL_HOST_USER="asadraza10075@gmail.com"
-EMAIL_HOST_PASSWORD="qaxoavnzciuzksmz"
-DEFAULT_FROM_EMAIL="asadraza10075@gmail.com"
+EMAIL_HOST_USER="asad.raza@conovoinc.com"
+EMAIL_HOST_PASSWORD="frflrkfptrdrteuv"
+DEFAULT_FROM_EMAIL="asad.raza@conovoinc.com"
 DJANGO_READ_DOT_ENV_FILE=True
 

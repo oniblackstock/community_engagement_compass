@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}AI Knowledge Assistant{% endblock %}</title>
+    <title>{% block title %}Community Engagement Compass{% endblock %}</title>
     {% load static %}
 
     <!-- Bootstrap CSS -->
@@ -51,6 +51,14 @@
             font-size: 1.5rem;
             color: white !important;
             text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Ensure brand logo is visible on dark navbar */
+        .navbar-brand img {
+            height: 44px;
+            width: auto;
+            filter: brightness(0) invert(1) drop-shadow(0 0 2px rgba(0,0,0,0.6));
+            margin-right: 0.5rem;
         }
 
         .chat-container {
@@ -589,7 +597,8 @@
     <nav class="navbar">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
-                <i class="fas fa-robot me-2"></i>AI Knowledge Assistant
+                <img src="{% static 'images/healthjustice-logo.webp' %}" alt="Health Justice" height="44" class="me-2">
+                Community Engagement Compass
             </a>
             <div class="d-flex align-items-center">
                 {% if user.is_staff %}
@@ -709,7 +718,7 @@
                 <div id="example-message" class="message assistant example{% if messages %} d-none{% endif %}">
                     <div class="avatar"><i class="fas fa-robot"></i></div>
                     <div class="message-content">
-                        <span class="example-badge">Example</span>
+                        <span class="example-badge">Response Format</span>
                         <div class="example-note"><i class="fas fa-lightbulb"></i>Static example to show format; real answers will vary.</div>
                         Here is an example response. The assistant provides a clear, concise answer using the uploaded documents and cites its sources below. The response can include explanations, bullet points, and code/text snippets.
                         <div class="message-sources" style="margin-top: 1rem;">

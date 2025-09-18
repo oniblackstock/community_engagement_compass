@@ -1,16 +1,27 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.shortcuts import redirect
 from django.urls import include, path
 from django.views import defaults as default_views
 from django.views.generic import TemplateView
+
+def root_redirect(request):
+    """Redirect base URL depending on authentication state.
+
+    - If authenticated: go to chat home
+    - If not authenticated: go to login page
+    """
+    if request.user.is_authenticated:
+        return redirect("chatbot:chat_home")
+    return redirect("account_login")
 
 urlpatterns = [
     # Chat application URLs
     path("chat/", include("chat.urls", namespace="chatbot")),
 
     # Core pages
-    path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
+    path("", root_redirect, name="home"),
     path("about/", TemplateView.as_view(template_name="pages/about.html"), name="about"),
 
     # Django Admin
