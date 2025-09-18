@@ -13,21 +13,54 @@ if typing.TYPE_CHECKING:
     from knowledgeassistant.users.models import User
 
 
+# class AccountAdapter(DefaultAccountAdapter):
+#     def is_open_for_signup(self, request: HttpRequest) -> bool:
+#         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
+
+#     def get_signup_redirect_url(self, request: HttpRequest) -> str:  # type: ignore[override]
+#         """Redirect to login with a flag so we can show a modal after signup.
+
+#         When email verification is mandatory, users should be prompted to
+#         check their inbox. We show this via a modal on the login page.
+#         """
+#         from django.urls import reverse
+
+#         login_url = reverse("account_login")
+#         return f"{login_url}?verification=sent"
+
+
 class AccountAdapter(DefaultAccountAdapter):
     def is_open_for_signup(self, request: HttpRequest) -> bool:
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
 
     def get_signup_redirect_url(self, request: HttpRequest) -> str:  # type: ignore[override]
-        """Redirect to login with a flag so we can show a modal after signup.
-
-        When email verification is mandatory, users should be prompted to
-        check their inbox. We show this via a modal on the login page.
-        """
         from django.urls import reverse
-
         login_url = reverse("account_login")
         return f"{login_url}?verification=sent"
 
+    def send_confirmation_mail(self, request, emailconfirmation, signup):
+        from django.template.loader import render_to_string
+        from django.core.mail import EmailMultiAlternatives
+        from django.urls import reverse
+
+        current_site = request.get_host()
+        activate_url = f"{request.scheme}://{current_site}{reverse('account_confirm_email', args=[emailconfirmation.key])}"
+
+        ctx = {
+            "user": emailconfirmation.email_address.user,
+            "activate_url": activate_url,
+            "current_site": current_site,
+            "email": emailconfirmation.email_address.email,
+            "request": request,
+        }
+
+        subject = render_to_string("account/email/email_confirmation_subject.txt", ctx).strip()
+        text_body = render_to_string("account/email/email_confirmation_message.txt", ctx)
+        html_body = render_to_string("account/email/email_confirmation_message.html", ctx)
+
+        msg = EmailMultiAlternatives(subject, text_body, self.get_from_email(), [emailconfirmation.email_address.email])
+        msg.attach_alternative(html_body, "text/html")
+        msg.send()
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_open_for_signup(
