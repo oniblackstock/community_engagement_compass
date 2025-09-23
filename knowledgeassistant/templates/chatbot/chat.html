@@ -166,6 +166,10 @@
             border-left: 3px solid var(--primary-gradient-start);
         }
 
+        /* Ensure long chat titles truncate and don't hide the action menu */
+        .chat-history-item a { min-width: 0; }
+        .chat-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
         .chat-main {
             flex: 1;
             display: flex;
@@ -182,12 +186,18 @@
             background: linear-gradient(135deg, rgba(44, 46, 101, 0.02), rgba(58, 61, 132, 0.02));
             border-top-left-radius: 12px;
             border-top-right-radius: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
 
         .chat-header h5 {
             margin: 0;
             color: var(--primary-color);
             font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .streaming-controls {
@@ -594,13 +604,18 @@
     <link rel="stylesheet" href="{% static 'css/healthjustice.css' %}">
 </head>
 <body>
-    <nav class="navbar">
+    <nav class="navbar fixed-top" style="z-index: 1030;">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
                 <img src="{% static 'images/healthjustice-logo.webp' %}" alt="Health Justice" height="44" class="me-2">
                 Community Engagement Compass
             </a>
             <div class="d-flex align-items-center">
+                {% if request.user.is_authenticated %}
+                <span class="text-white me-3 d-none d-md-inline" style="opacity: .9;">
+                    Welcome, {{ request.user.name|default:request.user.username|default:request.user.email }}!
+                </span>
+                {% endif %}
                 {% if user.is_staff %}
                 <a href="{% url 'chatbot:admin_dashboard' %}" class="btn admin-btn me-3">
                     <i class="fas fa-chart-line me-2"></i>
@@ -612,6 +627,14 @@
                     <span class="d-none d-md-inline">My Docs</span>
                 </a>
                 {% endif %}
+                <a href="{% url 'about' %}" class="btn admin-btn me-3">
+                    <i class="fas fa-circle-question me-2"></i>
+                    <span class="d-none d-md-inline">How it works</span>
+                </a>
+                <a href="#" class="btn admin-btn me-3" data-bs-toggle="modal" data-bs-target="#howItWorksModal" role="button">
+                    <i class="fas fa-circle-question me-2"></i>
+                    <span class="d-none d-md-inline">How it works</span>
+                </a>
                 <a href="{% url 'chatbot:feedback' %}" class="btn admin-btn me-3">
                     <i class="fas fa-message me-2"></i>
                     <span class="d-none d-md-inline">Feedback</span>
@@ -637,7 +660,7 @@
         </div>
     </nav>
 
-    <div class="chat-container">
+    <div class="chat-container" style="margin-top: 72px;">
         <div class="sidebar">
             <a class="new-chat-btn" href="{% url 'chatbot:create_chat_session' %}">
                 <i class="fas fa-plus me-2"></i>New Chat
@@ -649,9 +672,9 @@
                 </div>
                 {% for session in sessions %}
                 <div class="d-flex align-items-center justify-content-between chat-history-item {% if session.id == active_session.id %}active{% endif %}" data-session-id="{{ session.id }}">
-                    <a href="{% url 'chatbot:chat_session' session_id=session.id %}" class="d-flex align-items-center text-decoration-none flex-grow-1 me-2" style="color: inherit;">
+                    <a href="{% url 'chatbot:chat_session' session_id=session.id %}" class="d-flex align-items-center text-decoration-none flex-grow-1 me-2" style="color: inherit; min-width:0;">
                         <i class="fas fa-{% if session.session_name == "New Chat" %}plus{% else %}comments{% endif %}"></i>
-                        <span class="text-truncate ms-2">{{ session.session_name }}</span>
+                        <span class="chat-title ms-2">{{ session.session_name }}</span>
                     </a>
                     <div class="dropdown">
                         <button class="btn btn-sm btn-link text-muted p-0" type="button" id="sessionMenu{{ forloop.counter }}" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More options">

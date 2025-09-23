@@ -61,7 +61,7 @@
 <body class="{% block bodyclass %}{% endblock bodyclass %}">
   {% block body %}
   <div class="mb-1">
-    <nav class="navbar navbar-expand-md navbar-light bg-light">
+    <nav class="navbar navbar-expand-md navbar-light bg-light fixed-top">
       <div class="container-fluid">
         <button class="navbar-toggler navbar-toggler-right"
                 type="button"
@@ -85,6 +85,9 @@
               <a class="nav-link" href="{% url 'about' %}">About</a>
             </li>
             {% if request.user.is_authenticated %}
+              <li class="nav-item d-none d-md-block">
+                <span class="navbar-text text-muted">{{ greeting_time|default:"Welcome" }}, {{ request.user.name|default:request.user.username|default:request.user.email }}!</span>
+              </li>
               <li class="nav-item">
                 <a class="nav-link"
                    href="{% url 'users:detail' request.user.pk %}">{% translate "My Profile" %}</a>
@@ -110,6 +113,19 @@
       </div>
     </nav>
   </div>
+  <div style="height:64px"></div>
+  {% if request.user.is_authenticated %}
+  <script>
+    (function(){
+      try {
+        var hour = new Date().getHours();
+        var greeting = (hour < 12) ? 'Good morning' : (hour < 17) ? 'Good afternoon' : 'Good evening';
+        var els = document.getElementsByClassName('navbar-text');
+        if (els.length) { els[0].textContent = greeting + ', ' + els[0].textContent.split(', ').slice(1).join(', '); }
+      } catch(e){}
+    })();
+  </script>
+  {% endif %}
   <div class="container">
     {% if messages %}
       {% for message in messages %}

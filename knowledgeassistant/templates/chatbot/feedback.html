@@ -95,7 +95,7 @@
         {% endif %}
 
         <div class="mb-4">
-          <label class="form-label">{% trans "1. Ease of Use – How easy was it to interact with the Health Engagement Navigator?" %}</label>
+          <label class="form-label"><strong>{% trans "1. Ease of Use" %}</strong> <span class="text-muted">– {% trans "How easy was it to interact with the Health Engagement Navigator?" %} <span class="text-danger">*</span></span></label>
           {{ form.ease_of_use }}
           {% if form.ease_of_use.errors %}
             <div class="text-danger small">{{ form.ease_of_use.errors|striptags }}</div>
@@ -103,7 +103,7 @@
         </div>
 
         <div class="mb-4">
-          <label class="form-label">{% trans "2. Relevance of Responses – Did the information provided feel relevant to your work?" %}</label>
+          <label class="form-label"><strong>{% trans "2. Relevance of Responses" %}</strong> <span class="text-muted">– {% trans "Did the information provided feel relevant to your work?" %} <span class="text-danger">*</span></span></label>
           {{ form.relevance }}
           {% if form.relevance.errors %}
             <div class="text-danger small">{{ form.relevance.errors|striptags }}</div>
@@ -111,7 +111,7 @@
         </div>
 
         <div class="mb-4">
-          <label class="form-label">{% trans "3. Trust in Responses – How confident did you feel in the accuracy of the answers?" %}</label>
+          <label class="form-label"><strong>{% trans "3. Trust in Responses" %}</strong> <span class="text-muted">– {% trans "How confident did you feel in the accuracy of the answers?" %} <span class="text-danger">*</span></span></label>
           {{ form.trust }}
           {% if form.trust.errors %}
             <div class="text-danger small">{{ form.trust.errors|striptags }}</div>
@@ -119,7 +119,7 @@
         </div>
 
         <div class="mb-4">
-          <label class="form-label">{% trans "4. Usefulness of Citations & Explanations – How helpful were the citations and ‘how it got the answer’ notes?" %}</label>
+          <label class="form-label"><strong>{% trans "4. Usefulness of Citations & Explanations" %}</strong> <span class="text-muted">– {% trans "How helpful were the citations and ‘how it got the answer’ notes?" %} <span class="text-danger">*</span></span></label>
           {{ form.citations_helpfulness }}
           {% if form.citations_helpfulness.errors %}
             <div class="text-danger small">{{ form.citations_helpfulness.errors|striptags }}</div>
@@ -127,7 +127,7 @@
         </div>
 
         <div class="mb-4">
-          <label class="form-label">{% trans "5. Likelihood of Use – If developed further, how likely are you to use this resource in your professional work?" %}</label>
+          <label class="form-label"><strong>{% trans "5. Likelihood of Use" %}</strong> <span class="text-muted">– {% trans "If developed further, how likely are you to use this resource in your professional work?" %} <span class="text-danger">*</span></span></label>
           {{ form.likelihood_of_use }}
           {% if form.likelihood_of_use.errors %}
             <div class="text-danger small">{{ form.likelihood_of_use.errors|striptags }}</div>
@@ -135,7 +135,7 @@
         </div>
 
         <div class="mb-4">
-          <label for="id_additional_sources" class="form-label">{% trans "6. Additional Sources – What other community engagement resources or frameworks should we add to the Community Engagement Compass’s database?" %}</label>
+          <label for="id_additional_sources" class="form-label"><strong>{% trans "6. Additional Sources" %}</strong> <span class="text-muted">– {% trans "What other community engagement resources or frameworks should we add to the Community Engagement Compass’s database?" %} <span class="text-muted">({% trans "Optional" %})</span></span></label>
           {{ form.additional_sources }}
           {% if form.additional_sources.errors %}
             <div class="text-danger small">{{ form.additional_sources.errors|striptags }}</div>
@@ -143,7 +143,7 @@
         </div>
 
         <div class="mb-4">
-          <label for="id_open_feedback" class="form-label">{% trans "7. Open Feedback – What worked well for you, and what would you improve about the Community Engagement Compass?" %}</label>
+          <label for="id_open_feedback" class="form-label"><strong>{% trans "7. Open Feedback" %}</strong> <span class="text-muted">– {% trans "What worked well for you, and what would you improve about the Community Engagement Compass?" %} <span class="text-muted">({% trans "Optional" %})</span></span></label>
           {{ form.open_feedback }}
           {% if form.open_feedback.errors %}
             <div class="text-danger small">{{ form.open_feedback.errors|striptags }}</div>

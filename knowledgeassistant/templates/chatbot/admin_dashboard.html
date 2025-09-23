@@ -2,6 +2,8 @@
 
 {% block title %}Knowledge Base - Dashboard{% endblock %}
 
+{% block navbar %}{% endblock %}
+
 {% block extra_css %}
 {% load static %}
 <style>
@@ -578,7 +580,7 @@
             <a href="{% url 'chatbot:chat_home' %}" class="nav-btn" title="Chat Interface">
                 <i class="fas fa-comments"></i>
             </a>
-            <a href="{% url 'chatbot:feedback' %}" class="nav-btn" title="Feedback">
+            <a href="{% url 'chatbot:feedback' %}" class="nav-btn" title="Feedback"> 
                 <i class="fas fa-message"></i>
             </a>
             <a href="{% url 'users:detail' request.user.pk %}" class="nav-btn" title="Profile Settings">
@@ -655,6 +657,7 @@
             <div class="row g-3">
                 <div class="col-md-9">
                     <div class="upload-area">
+                        
                         <input type="file" class="form-control bg-transparent text-dark"
                                name="pdf_files" multiple accept=".pdf" required>
                     </div>
