@@ -245,6 +245,18 @@
                 max-width: 85%;
             }
         }
+        .modal-dialog.ka-modal-xl {
+        max-width: 90%;
+        width: 100%;
+    }
+    .modal-body {
+        padding: 2rem;
+    }
+    .modal-body h5,
+    .modal-body h6 {
+        margin-top: 1.5rem;
+        font-weight: bold;
+    }
     </style>
 
     {% block extra_css %}{% endblock %}
@@ -263,13 +275,13 @@
                     Welcome, {{ request.user.name|default:request.user.username|default:request.user.email }}!
                 </span>
                 {% endif %}
-                <a href="#" class="btn admin-btn me-3" data-bs-toggle="modal" data-bs-target="#howItWorksModal" role="button">
-                    <i class="fas fa-circle-question me-2"></i>
-                    <span class="d-none d-md-inline">How it works</span>
-                </a>
                 <a href="#" class="btn admin-btn me-3" data-bs-toggle="modal" data-bs-target="#aboutModal" role="button">
                     <i class="fas fa-info-circle me-2"></i>
                     <span class="d-none d-md-inline">About</span>
+                </a>
+                <a href="#" class="btn admin-btn me-3" data-bs-toggle="modal" data-bs-target="#howItWorksModal" role="button">
+                    <i class="fas fa-circle-question me-2"></i>
+                    <span class="d-none d-md-inline">How it works</span>
                 </a>
                 {% if user.is_staff %}
                 <a href="{% url 'chatbot:admin_dashboard' %}" class="btn admin-btn me-3">
@@ -310,82 +322,21 @@
         {% block content %}{% endblock %}
     </main>
 
+
     <!-- How it works Modal -->
     <div class="modal fade ka-modal" id="howItWorksModal" tabindex="-1" aria-labelledby="howItWorksLabel" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog ka-modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="howItWorksLabel">How it works</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <!-- Section: Model Description -->
-                    <h6 class="fw-bold mb-2 text-primary">🧠 What Powers This System?</h6>
-                    <p>
-                        Our system uses a <strong>lean, efficient AI model</strong> built specifically for community engagement.
-                        It’s not a massive, energy-heavy LLM — instead, it’s fast, focused, and low-impact.
-                    </p>
-                    <ul class="mb-4">
-                        <li>⚡ Fast, task-specific performance</li>
-                        <li>🌱 Low energy usage = eco-friendly</li>
-                        <li>🔍 Transparent and accountable architecture</li>
-                    </ul>
-        
-                    <!-- Section: Transparency -->
-                    <h6 class="fw-bold mb-2 text-primary">🔎 Transparency & Sustainability</h6>
-                    <p>
-                        We care about being responsible with technology. This model was built with sustainability in mind:
-                    </p>
-                    <ul class="mb-4">
-                        <li>💡 No unnecessary energy consumption</li>
-                        <li>📉 Minimal compute overhead</li>
-                        <li>📖 <a href="#" target="_blank">View model documentation</a> to learn more</li>
-                    </ul>
-        
-                    <!-- Section: Community Contributions -->
-                    <h6 class="fw-bold mb-2 text-primary">🤝 Contribute to the System</h6>
-                    <p>
-                        You can suggest documents or resources that might benefit the community. Here’s how:
-                    </p>
-                    <ol class="mb-4 ps-3">
-                        <li class="mb-2">📤 Upload a document using our contribution form</li>
-                        <li class="mb-2">🧑‍⚖️ Our team reviews all submissions for quality</li>
-                        <li>🌍 Approved documents may be shared with all users to expand knowledge</li>
-                    </ol>
-        
-                    <!-- Section: Guiding Principles -->
-                    <h6 class="fw-bold mb-2 text-primary">✅ Our Guiding Principles</h6>
-                    <ul>
-                        <li>🔓 Transparency — know what’s under the hood</li>
-                        <li>🌍 Sustainability — tech that’s kind to the planet</li>
-                        <li>👥 Community — your voice shapes the experience</li>
-                    </ul>
-                </div>
-            </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- About Modal -->
-    <div class="modal fade ka-modal" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="aboutModalLabel">About Community Engagement Compass</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-3">
-                        The <strong>Community Engagement Compass</strong> is designed to help practitioners explore trusted, curated content with confidence. Ask questions directly against your document set and receive clear, cited answers — every time.
-                    </p>
-                    <ul class="mb-0 ps-3">
-                        <li class="mb-2">📄 Uploaded documents are securely processed and organized for efficient search and response.</li>
-                        <li class="mb-2">🔗 Responses include citations that link directly to the source page for full transparency.</li>
-                        <li class="mb-2">🔐 Your organization’s content is kept private and scoped exclusively to your account.</li>
-                    </ul>
+                <div class="modal-body" id="howItWorksContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="modal-footer">
@@ -394,6 +345,33 @@
             </div>
         </div>
     </div>
+
+    <!-
+    <!-- About Modal -->
+    <div class="modal fade ka-modal" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
+        <div class="modal-dialog ka-modal-xl"> <!-- <-- Custom wide class added here -->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="aboutModalLabel">About Community Engagement Compass</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+    
+                <div class="modal-body" id="aboutContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+    
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -446,6 +424,53 @@
         }
 
         const csrftoken = getCookie('csrftoken');
+
+        // Load modal content from database
+        function setupModalContentLoading() {
+            // Load How It Works content
+            const howItWorksModal = document.getElementById('howItWorksModal');
+            if (howItWorksModal) {
+                howItWorksModal.addEventListener('show.bs.modal', function() {
+                    loadModalContent('{% url "chatbot:how_it_works_content" %}', 'howItWorksLabel', 'howItWorksContent');
+                });
+            }
+
+            // Load About content
+            const aboutModal = document.getElementById('aboutModal');
+            if (aboutModal) {
+                aboutModal.addEventListener('show.bs.modal', function() {
+                    loadModalContent('{% url "chatbot:about_content" %}', 'aboutModalLabel', 'aboutContent');
+                });
+            }
+        }
+
+        function loadModalContent(url, titleId, contentId) {
+            const titleElement = document.getElementById(titleId);
+            const contentElement = document.getElementById(contentId);
+            
+            if (!titleElement || !contentElement) return;
+
+            // Show loading state
+            titleElement.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading...';
+            contentElement.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    titleElement.innerHTML = `<i class="fas fa-${titleId.includes('about') ? 'info-circle' : 'circle-question'} me-2"></i>${data.title}`;
+                    contentElement.innerHTML = data.content;
+                })
+                .catch(error => {
+                    console.error('Error loading modal content:', error);
+                    titleElement.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>Error`;
+                    contentElement.innerHTML = '<p class="text-danger">Failed to load content. Please try again later.</p>';
+                });
+        }
+
+        // Initialize modal content loading when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            setupModalContentLoading();
+        });
     </script>
 
     {% block extra_js %}{% endblock %}

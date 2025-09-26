@@ -93,6 +93,8 @@ THIRD_PARTY_APPS = [
     "allauth.account",
     "allauth.mfa",
     "allauth.socialaccount",
+    "ckeditor",
+    "ckeditor_uploader",
 ]
 
 LOCAL_APPS = [
@@ -384,4 +386,48 @@ EMAIL_HOST_USER="asad.raza@conovoinc.com"
 EMAIL_HOST_PASSWORD="frflrkfptrdrteuv"
 DEFAULT_FROM_EMAIL="asad.raza@conovoinc.com"
 DJANGO_READ_DOT_ENV_FILE=True
+
+# CKEditor Configuration
+CKEDITOR_UPLOAD_PATH = "uploads/"
+CKEDITOR_IMAGE_BACKEND = "pillow"
+
+CKEDITOR_CONFIGS = {
+    'default': {
+        'toolbar': 'full',
+        'height': 400,
+        'width': '100%',
+        'toolbar_Custom': [
+            ['Bold', 'Italic', 'Underline'],
+            ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock'],
+            ['Link', 'Unlink'],
+            ['RemoveFormat', 'Source'],
+            ['TextColor', 'BGColor'],
+            ['Font', 'FontSize'],
+            ['Table', 'HorizontalRule'],
+            ['Styles', 'Format'],
+        ],
+        'toolbar': 'Custom',
+        'extraPlugins': ','.join([
+            'uploadimage',  # the upload image feature
+            'div',
+            'autolink',
+            'autoembed',
+            'embedsemantic',
+            'autogrow',
+            'widget',
+            'lineutils',
+            'clipboard',
+            'dialog',
+            'dialogui',
+            'elementspath'
+        ]),
+    },
+    'special': {
+        'toolbar': 'Special',
+        'toolbar_Special': [
+            ['Bold', 'CodeSnippet'],
+        ],
+        'extraPlugins': 'codesnippet',
+    }
+}
 

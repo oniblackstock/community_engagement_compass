@@ -10,12 +10,13 @@ from django.core.paginator import Paginator
 from django.db.models import Q, Count
 from django.views.decorators.http import require_http_methods
 from django.core.cache import cache
+from django.utils.safestring import mark_safe
 import json
 import logging
 import os
 import time
 from typing import Generator
-from .models import PDFDocument, ChatSession, ChatMessage, ChatMessageSource, Feedback, SurveyResponse
+from .models import PDFDocument, ChatSession, ChatMessage, ChatMessageSource, Feedback, SurveyResponse, AboutContent, HowItWorksContent
 from .forms import FeedbackForm, SurveyFeedbackForm
 from .services import PDFProcessingService, ChatService, EmbeddingService
 from django.utils.decorators import method_decorator
@@ -680,3 +681,54 @@ def emergency_memory_cleanup():
     
 # Call before heavy operations
 emergency_memory_cleanup()
+
+
+def about_content(request):
+    """View to get About content for AJAX requests"""
+    try:
+        content = AboutContent.get_active_content()
+        if content:
+            return JsonResponse({
+                'title': content.title,
+                'content': mark_safe(content.content)
+            })
+        else:
+            return JsonResponse({
+                'title': 'About Community Engagement Compass',
+                'content': '<p>Welcome to the Community Engagement Compass, a tool designed to support healthcare and public health professionals in applying trusted community engagement frameworks.</p>'
+            })
+    except Exception as e:
+        logger.error(f"Error fetching about content: {str(e)}")
+        return JsonResponse({
+            'title': 'About Community Engagement Compass',
+            'content': '<p>Welcome to the Community Engagement Compass.</p>'
+        })
+
+
+def how_it_works_content(request):
+    """View to get How It Works content for AJAX requests"""
+    try:
+        content = HowItWorksContent.get_active_content()
+        if content:
+            return JsonResponse({
+                'title': content.title,
+                'content': mark_safe(content.content)
+            })
+        else:
+            return JsonResponse({
+                'title': 'How It Works',
+                'content': '''
+                <ol>
+                    <li>Type a question about your uploaded documents or topics.</li>
+                    <li>Toggle "Enable streaming responses" to see tokens as they generate.</li>
+                    <li>Sources are listed under replies when available; click links to view.</li>
+                    <li>Use "New Chat" to start a fresh conversation thread.</li>
+                </ol>
+                '''
+            })
+    except Exception as e:
+        logger.error(f"Error fetching how it works content: {str(e)}")
+        return JsonResponse({
+            'title': 'How It Works',
+            'content': '<p>How the Community Engagement Compass works.</p>'
+        })

@@ -23,5 +23,9 @@ urlpatterns = [
     path('admin/document/<uuid:doc_id>/delete/', views.delete_document, name='delete_document'),
     path('admin/document/<uuid:doc_id>/reprocess/', views.reprocess_document, name='reprocess_document'),
     path('admin/document/<uuid:doc_id>/', views.document_details, name='document_details'),
+    
+    # Content URLs
+    path('api/about/', views.about_content, name='about_content'),
+    path('api/how-it-works/', views.how_it_works_content, name='how_it_works_content'),
 
 ]

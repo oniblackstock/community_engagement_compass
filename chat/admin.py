@@ -1,6 +1,8 @@
 
 from django.contrib import admin
-from .models import PDFDocument, DocumentChunk, ChatSession, ChatMessage, EmbeddingIndex, Feedback
+from django.db import models
+from .models import PDFDocument, DocumentChunk, ChatSession, ChatMessage, EmbeddingIndex, Feedback, SurveyResponse, AboutContent, HowItWorksContent
+from ckeditor.widgets import CKEditorWidget
 
 
 @admin.register(PDFDocument)
@@ -67,3 +69,41 @@ class FeedbackAdmin(admin.ModelAdmin):
     list_display = ("name", "email", "user", "created_at")
     search_fields = ("name", "email", "message")
     list_filter = ("created_at",)
+
+
+@admin.register(SurveyResponse)
+class SurveyResponseAdmin(admin.ModelAdmin):
+    list_display = ("user", "ease_of_use", "relevance", "trust", "created_at")
+    list_filter = ("ease_of_use", "relevance", "trust", "citations_helpfulness", "likelihood_of_use", "created_at")
+    search_fields = ("user__email", "user__name", "additional_sources", "open_feedback")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(AboutContent)
+class AboutContentAdmin(admin.ModelAdmin):
+    list_display = ("title", "is_active", "updated_at")
+    list_filter = ("is_active", "created_at", "updated_at")
+    search_fields = ("title", "content")
+    readonly_fields = ("created_at", "updated_at")
+    
+    formfield_overrides = {
+        models.TextField: {'widget': CKEditorWidget()},
+    }
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).order_by('-updated_at')
+
+
+@admin.register(HowItWorksContent)
+class HowItWorksContentAdmin(admin.ModelAdmin):
+    list_display = ("title", "is_active", "updated_at")
+    list_filter = ("is_active", "created_at", "updated_at")
+    search_fields = ("title", "content")
+    readonly_fields = ("created_at", "updated_at")
+    
+    formfield_overrides = {
+        models.TextField: {'widget': CKEditorWidget()},
+    }
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).order_by('-updated_at')

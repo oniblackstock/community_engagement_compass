@@ -3,6 +3,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from ckeditor.fields import RichTextField
 
 User = get_user_model()
 
@@ -226,3 +227,51 @@ class SurveyResponse(models.Model):
 
     def __str__(self):
         return f"SurveyResponse {self.id} ({self.created_at:%Y-%m-%d %H:%M})"
+
+
+class AboutContent(models.Model):
+    """Stores the About page content that can be edited from admin."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=200, default="About Community Engagement Compass")
+    content = RichTextField(help_text="Rich text content for the About page")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return self.title
+
+    @classmethod
+    def get_active_content(cls):
+        """Get the active About content, or create a default one if none exists."""
+        try:
+            return cls.objects.filter(is_active=True).first()
+        except cls.DoesNotExist:
+            return None
+
+
+class HowItWorksContent(models.Model):
+    """Stores the How It Works content that can be edited from admin."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=200, default="How It Works")
+    content = RichTextField(help_text="Rich text content for the How It Works page")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return self.title
+
+    @classmethod
+    def get_active_content(cls):
+        """Get the active How It Works content, or create a default one if none exists."""
+        try:
+            return cls.objects.filter(is_active=True).first()
+        except cls.DoesNotExist:
+            return None
