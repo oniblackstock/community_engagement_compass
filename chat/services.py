@@ -267,7 +267,7 @@ class EmbeddingService:
             # Fallback to full rebuild
             self.update_faiss_index()
 
-    def search_similar_chunks(self, query_text, top_k=5, similarity_threshold=0.3):
+    def search_similar_chunks(self, query_text, top_k=10, similarity_threshold=0.3):
         """Search for similar chunks using FAISS with improved accuracy"""
         try:
             if not os.path.exists(self.index_path) or not os.path.exists(self.mapping_path):
@@ -530,24 +530,79 @@ class ChatService:
             # Require KB context; don't generate generic answers
             if not context:
                 return "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
-
-            # Build prompt with strict instruction to use only the context
             formatted_prompt = f"""### Context (knowledge base excerpts):
 {context}
 
-### Instruction:
-Using ONLY the information in the Context, write a clear, well-structured answer in full paragraphs. Synthesize across documents when helpful. Do not mention that you used a context. If the answer is not present in the Context, reply exactly: "I could not find information in the knowledge base about that."
+### Task:
+You are a public health expert responding to a question using ONLY the information provided above in the Context section.
 
-Guidelines:
-- Aim for a concise but complete explanation (6-12 sentences)
-- Use a neutral, informative tone
-- Avoid bullet lists unless necessary
+STRICT RULES:
+- Do NOT use any outside or prior knowledge.
+- Do NOT guess or generalize.
+- Do NOT paraphrase based on your own understanding.
+- You MAY treat synonyms or clearly equivalent terms in the user question as matching those in the Context.
+- If the answer is not clearly stated in the Context or cannot be inferred through synonymous phrasing, respond exactly: "I could not find information in the knowledge base about that."
+
+INSTRUCTIONS FOR YOUR RESPONSE:
+- Begin with a simple, direct explanation in full sentences.
+- Use details and examples from the Context where possible.
+- If helpful, synthesize across multiple excerpts in the Context.
+- End your answer with 2–4 concise bullet point takeaways that summarize the key ideas.
+
+Maintain a factual, professional tone. Do not mention or reference the Context section in your answer.
 
 User question:
 {user_prompt}
 
 ### Response:
 """
+
+#             formatted_prompt = f"""### Context (knowledge base excerpts):
+# {context}
+
+# ### Task:
+# You are a public health expert responding to a question using ONLY the information provided above in the Context section.
+
+# STRICT RULES:
+# - Do NOT use any outside or prior knowledge.
+# - Do NOT guess or generalize.
+# - Do NOT paraphrase based on your own understanding.
+# - If the answer is not clearly stated in the Context, respond exactly: "I could not find information in the knowledge base about that."
+
+# INSTRUCTIONS FOR YOUR RESPONSE:
+# - Begin with a simple, direct explanation in full sentences.
+# - Use details and examples from the Context where possible.
+# - If helpful, synthesize across multiple excerpts in the Context.
+# - End your answer with 2–4 concise bullet point takeaways that summarize the key ideas.
+
+# Maintain a factual, professional tone. Do not mention or reference the Context section in your answer.
+
+# User question:
+# {user_prompt}
+
+# ### Response:
+# """
+
+
+
+
+            # Build prompt with strict instruction to use only the context
+#             formatted_prompt = f"""### Context (knowledge base excerpts):
+# {context}
+
+# ### Instruction:
+# Using ONLY the information in the Context, write a clear, well-structured answer in full paragraphs. Synthesize across documents when helpful. Do not mention that you used a context. If the answer is not present in the Context, reply exactly: "I could not find information in the knowledge base about that."
+
+# Guidelines:
+# - Aim for a concise but complete explanation (6-12 sentences)
+# - Use a neutral, informative tone
+# - Avoid bullet lists unless necessary
+
+# User question:
+# {user_prompt}
+
+# ### Response:
+# """
 
             inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.device)
 
@@ -556,9 +611,9 @@ User question:
                 generation_kwargs = {
                     **inputs,
                     "max_new_tokens": 512,  # Allow longer, more complete answers
-                    "do_sample": True,
-                    "top_p": 0.9,
-                    "temperature": 0.7,
+                    "do_sample": False,
+                    "top_p": 0.8,
+                    "temperature": 0.0,
                     "pad_token_id": self.tokenizer.pad_token_id,
                     "eos_token_id": self.tokenizer.eos_token_id,
                     "repetition_penalty": 1.1,
@@ -604,24 +659,80 @@ User question:
             if not context:
                 yield "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
                 return
-
-            # Build prompt with strict instruction to use only the context
             formatted_prompt = f"""### Context (knowledge base excerpts):
 {context}
 
-### Instruction:
-Using ONLY the information in the Context, write a clear, well-structured answer in full paragraphs. Synthesize across documents when helpful. Do not mention that you used a context. If the answer is not present in the Context, reply exactly: "I could not find information in the knowledge base about that."
+### Task:
+You are a public health expert responding to a question using ONLY the information provided above in the Context section.
 
-Guidelines:
-- Aim for a concise but complete explanation (6-12 sentences)
-- Use a neutral, informative tone
-- Avoid bullet lists unless necessary
+STRICT RULES:
+- Do NOT use any outside or prior knowledge.
+- Do NOT guess or generalize.
+- Do NOT paraphrase based on your own understanding.
+- You MAY treat synonyms or clearly equivalent terms in the user question as matching those in the Context.
+- If the answer is not clearly stated in the Context or cannot be inferred through synonymous phrasing, respond exactly: "I could not find information in the knowledge base about that."
+
+INSTRUCTIONS FOR YOUR RESPONSE:
+- Begin with a simple, direct explanation in full sentences.
+- Use details and examples from the Context where possible.
+- If helpful, synthesize across multiple excerpts in the Context.
+- End your answer with 2–4 concise bullet point takeaways that summarize the key ideas.
+
+Maintain a factual, professional tone. Do not mention or reference the Context section in your answer.
 
 User question:
 {user_prompt}
 
 ### Response:
 """
+
+#             formatted_prompt = f"""### Context (knowledge base excerpts):
+# {context}
+
+# ### Task:
+# You are a public health expert responding to a question using ONLY the information provided above in the Context section.
+
+# STRICT RULES:
+# - Do NOT use any outside or prior knowledge.
+# - Do NOT guess or generalize.
+# - Do NOT paraphrase based on your own understanding.
+# - If the answer is not clearly stated in the Context, respond exactly: "I could not find information in the knowledge base about that."
+
+
+# INSTRUCTIONS FOR YOUR RESPONSE:
+# - Begin with a simple, direct explanation in full sentences.
+# - Use details and examples from the Context where possible.
+# - If helpful, synthesize across multiple excerpts in the Context.
+# - End your answer with 2–4 concise bullet point takeaways that summarize the key ideas.
+
+# Maintain a factual, professional tone. Do not mention or reference the Context section in your answer.
+
+# User question:
+# {user_prompt}
+
+# ### Response:
+# """
+
+
+
+
+            # Build prompt with strict instruction to use only the context
+#             formatted_prompt = f"""### Context (knowledge base excerpts):
+# {context}
+
+# ### Instruction:
+# Using ONLY the information in the Context, write a clear, well-structured answer in full paragraphs. Synthesize across documents when helpful. Do not mention that you used a context. If the answer is not present in the Context, reply exactly: "I could not find information in the knowledge base about that."
+
+# Guidelines:
+# - Aim for a concise but complete explanation (6-12 sentences)
+# - Use a neutral, informative tone
+# - Avoid bullet lists unless necessary
+
+# User question:
+# {user_prompt}
+
+# ### Response:
+# """
 
             inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.device)
 
@@ -631,9 +742,9 @@ User question:
                 generation_kwargs = {
                     **inputs,
                     "max_new_tokens": 512,  # Allow longer answers
-                    "do_sample": True,
-                    "top_p": 0.9,
-                    "temperature": 0.7,
+                    "do_sample": False,
+                    "top_p": 0.8,
+                    "temperature": 0.0,
                     "pad_token_id": self.tokenizer.pad_token_id,
                     "eos_token_id": self.tokenizer.eos_token_id,
                     "repetition_penalty": 1.1,
