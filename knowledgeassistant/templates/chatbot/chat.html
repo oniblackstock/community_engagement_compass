@@ -1,6 +1,6 @@
 {% extends "chatbot/base.html" %}
 {% load static %}
-
+{% load markdown_extras %}
 {% block title %}Community Engagement Compass{% endblock %}
 
 {% block extra_css %}
@@ -310,6 +310,108 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             word-wrap: break-word;
             max-width: 100%;
+        }
+
+        /* Markdown content styling */
+        .message-content h1, .message-content h2, .message-content h3, 
+        .message-content h4, .message-content h5, .message-content h6 {
+            margin: 0.5rem 0;
+            font-weight: 600;
+            color: inherit;
+        }
+
+        .message-content h1 { font-size: 1.5rem; }
+        .message-content h2 { font-size: 1.3rem; }
+        .message-content h3 { font-size: 1.1rem; }
+        .message-content h4 { font-size: 1rem; }
+        .message-content h5 { font-size: 0.9rem; }
+        .message-content h6 { font-size: 0.8rem; }
+
+        .message-content ul, .message-content ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .message-content li {
+            margin: 0.25rem 0;
+            line-height: 1.5;
+            font-weight: normal; /* Ensure bullet points are not bold */
+        }
+
+        .message-content li strong {
+            font-weight: 600; /* Only make strong tags within bullets bold */
+        }
+
+        .message-content p {
+            margin: 0.5rem 0;
+            line-height: 1.6;
+        }
+
+        .message-content p:first-child {
+            margin-top: 0;
+        }
+
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Bold headings formatting - more specific selectors */
+        .message-content p > strong:only-child {
+            display: block;
+            font-weight: 600;
+            font-size: 1.1em;
+            color: var(--primary-color);
+            margin: 1rem 0 0.5rem 0;
+        }
+
+        .message-content p:has(> strong:only-child) {
+            margin: 1rem 0 0.5rem 0;
+        }
+
+        .message-content p:has(> strong:only-child) + p,
+        .message-content p:has(> strong:only-child) + ul,
+        .message-content p:has(> strong:only-child) + ol {
+            margin-top: 0.25rem;
+        }
+
+        .message-content blockquote {
+            margin: 0.5rem 0;
+            padding: 0.5rem 1rem;
+            border-left: 3px solid var(--primary-color);
+            background: rgba(44, 46, 101, 0.05);
+            font-style: italic;
+        }
+
+        .message-content code {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .message-content pre {
+            background: rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 5px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+
+        .message-content pre code {
+            background: none;
+            padding: 0;
+        }
+
+        /* Q&A formatting */
+        .message-content p:has(strong:first-child) {
+            margin: 1rem 0 0.5rem 0;
+        }
+
+        .message-content p strong:first-child {
+            color: var(--primary-color);
+            font-size: 1.05em;
         }
 
         .message.user .message-content {
@@ -723,7 +825,8 @@
                         {% endif %}
                     </div>
                     <div class="message-content">
-                        {{ message.content|linebreaks }}
+                        <!-- {{ message.content|linebreaks }} -->
+                        {{ message.content|markdownify }}
                         {% if message.source_links.all %}
                         <div class="message-sources">
                             <strong><i class="fas fa-book me-1"></i>Sources:</strong>
@@ -811,6 +914,8 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Marked.js for markdown parsing - needs to load before our chat script -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
 
 
     <script>
@@ -1035,9 +1140,35 @@
             }
 
             appendToken(token, messageContent) {
-                // Insert token before cursor
-                const textNode = document.createTextNode(token);
-                messageContent.insertBefore(textNode, this.streamingCursor);
+                // Remove cursor temporarily
+                if (this.streamingCursor) {
+                    this.streamingCursor.remove();
+                }
+                
+                // Get current text content (without HTML)
+                const currentTextNode = messageContent.querySelector('.streaming-text');
+                let currentText = currentTextNode ? currentTextNode.textContent : '';
+                
+                // Append new token
+                currentText += token;
+                
+                // Remove old text node if it exists
+                if (currentTextNode) {
+                    currentTextNode.remove();
+                }
+                
+                // Create a container for the streaming text
+                const textContainer = document.createElement('div');
+                textContainer.className = 'streaming-text';
+                textContainer.innerHTML = this.formatMessage(currentText);
+                
+                messageContent.appendChild(textContainer);
+                
+                // Re-add cursor
+                if (this.streamingCursor) {
+                    messageContent.appendChild(this.streamingCursor);
+                }
+                
                 this.scrollToBottom();
             }
 
@@ -1172,8 +1303,87 @@
             }
 
             formatMessage(content) {
-                // Convert line breaks to HTML
-                return this.escapeHtml(content).replace(/\n/g, '<br>');
+                // Check if marked is available, if not, fall back to basic formatting
+                if (typeof marked === 'undefined') {
+                    console.warn('Marked.js not loaded, using fallback formatting');
+                    return this.fallbackFormatMessage(content);
+                }
+                
+                // Configure marked for better formatting
+                marked.setOptions({
+                    breaks: true,  // Enable line breaks
+                    gfm: true,     // GitHub flavored markdown
+                    sanitize: false // We'll handle this ourselves
+                });
+                
+                // Preprocessing: Fix common formatting issues
+                // Fix bullet points that are concatenated without line breaks
+                content = content.replace(/(\.)(\s*-\s)/g, '.\n\n$2');
+                content = content.replace(/([a-z])\s*-\s/g, '$1\n\n- ');
+                
+                // Fix bold headings spacing - ensure blank lines before and after
+                content = content.replace(/([^\n])\n(\*\*[^*]+\*\*)/g, '$1\n\n$2');
+                content = content.replace(/(\*\*[^*]+\*\*)\n([^\n])/g, '$1\n\n$2');
+                
+                // Ensure proper spacing around bullet points
+                content = content.replace(/([^\n])\n(- )/g, '$1\n\n$2');
+                content = content.replace(/([^\n])\n(\d+\. )/g, '$1\n\n$2');
+                content = content.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2');
+                
+                // Clean up multiple consecutive newlines (but preserve double newlines)
+                content = content.replace(/\n{3,}/g, '\n\n');
+                
+                try {
+                    // Parse markdown to HTML
+                    const html = marked.parse(content);
+                    
+                    // Basic sanitization - remove potentially harmful elements
+                    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+                } catch (error) {
+                    console.error('Error parsing markdown:', error);
+                    return this.fallbackFormatMessage(content);
+                }
+            }
+
+            fallbackFormatMessage(content) {
+                // Fallback formatting if marked.js isn't available
+                // Fix concatenated bullet points
+                content = content.replace(/(\.)(\s*-\s)/g, '.\n\n$2');
+                content = content.replace(/([a-z])\s*-\s/g, '$1\n\n- ');
+                
+                // Ensure proper spacing around bullet points and headings
+                content = content.replace(/([^\n])\n(- )/g, '$1\n\n$2');
+                content = content.replace(/([^\n])\n(\d+\. )/g, '$1\n\n$2');
+                content = content.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2');
+                
+                // Clean up multiple newlines
+                content = content.replace(/\n{3,}/g, '\n\n');
+                
+                // Basic HTML conversion
+                content = this.escapeHtml(content);
+                
+                // Convert headings
+                content = content.replace(/^(#{1,6})\s+(.+)$/gm, (match, hashes, title) => {
+                    const level = hashes.length;
+                    return `<h${level}>${title.trim()}</h${level}>`;
+                });
+                
+                // Convert bullet points
+                content = content.replace(/^-\s+(.+)$/gm, '<li>$1</li>');
+                
+                // Wrap consecutive list items
+                content = content.replace(/(<li>.*<\/li>\s*)+/gs, '<ul>$&</ul>');
+                
+                // Convert line breaks
+                content = content.replace(/\n\n/g, '</p><p>');
+                content = content.replace(/\n/g, '<br>');
+                
+                // Wrap in paragraphs if not already wrapped
+                if (!content.startsWith('<')) {
+                    content = '<p>' + content + '</p>';
+                }
+                
+                return content;
             }
 
             escapeHtml(text) {

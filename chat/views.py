@@ -193,6 +193,8 @@ def send_message(request):
         # Update session title if this is the first message
         if session.messages.count() == 1:
             session.update_title_from_message(message_content)
+            # Invalidate cache after session update
+            cache.delete(f"user_sessions_{request.user.id}")
 
         # Get conversation history
         messages = list(session.messages.select_related('session').all())
@@ -220,6 +222,9 @@ def send_message(request):
                 message_type='assistant',
                 content=response_content
             )
+
+            # Invalidate cache after saving message
+            cache.delete(f"user_sessions_{request.user.id}")
 
             # Add sources if chunks were used (UI will render as a separate block)
             sources_data = []
@@ -286,6 +291,9 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                     content=full_response
                 )
                 
+                # Invalidate cache after saving message
+                cache.delete(f"user_sessions_{session.user.id}")
+                
                 # Add sources if available
                 sources_data = []
                 if similar_chunks:
@@ -305,7 +313,7 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                             chunk=chunk,
                             similarity=score,
                             confidence=similarity_to_confidence(score),
-                            url=request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
+                            url=''  # Set empty for now, can be updated later if needed
                         )
                         sources_data.append({
                             'title': chunk.document.title,

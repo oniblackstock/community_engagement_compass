@@ -5,8 +5,7 @@ import pickle
 import os
 import threading
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
-import torch
+import ollama
 from django.conf import settings
 from .models import DocumentChunk, EmbeddingIndex
 import logging
@@ -14,6 +13,7 @@ from typing import List, Dict, Generator, Optional
 import asyncio
 import json
 from django.http import StreamingHttpResponse
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -148,16 +148,20 @@ class EmbeddingService:
         if hasattr(self, 'initialized'):
             return
             
-        # Use a better embedding model for improved accuracy
-        self.model = SentenceTransformer('all-mpnet-base-v2')  # Better than all-MiniLM-L6-v2
-        self.dimension = 768  # Dimension for all-mpnet-base-v2
+        # Use the best embedding model for improved accuracy and retrieval
+        # BAAI/bge-large-en-v1.5 is currently one of the best English embedding models
+        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
+        self.dimension = 1024  # Dimension for BAAI/bge-large-en-v1.5
         self.index_path = os.path.join(settings.MEDIA_ROOT, 'faiss_index.bin')
         self.mapping_path = os.path.join(settings.MEDIA_ROOT, 'chunk_mapping.pkl')
         self.initialized = True
+        logger.info(f"Initialized EmbeddingService with BAAI/bge-large-en-v1.5 (dim={self.dimension})")
 
     def create_embedding(self, text):
-        """Create embedding for given text"""
-        return self.model.encode([text], convert_to_tensor=False)[0]
+        """Create embedding for given text with query prefix for BGE model"""
+        # BGE models work better with instruction prefix for queries
+        prefixed_text = f"Represent this sentence for searching relevant passages: {text}"
+        return self.model.encode([prefixed_text], convert_to_tensor=False)[0]
     
     def create_embeddings_batch(self, texts):
         """Create embeddings for multiple texts at once (more efficient)"""
@@ -267,7 +271,7 @@ class EmbeddingService:
             # Fallback to full rebuild
             self.update_faiss_index()
 
-    def search_similar_chunks(self, query_text, top_k=10, similarity_threshold=0.3):
+    def search_similar_chunks(self, query_text, top_k=10, similarity_threshold=0.4):
         """Search for similar chunks using FAISS with improved accuracy"""
         try:
             if not os.path.exists(self.index_path) or not os.path.exists(self.mapping_path):
@@ -336,86 +340,43 @@ class ChatService:
         if hasattr(self, 'initialized'):
             return
             
-        self.model = None
-        self.tokenizer = None
+        # Use Ollama for optimized model management
+        self.ollama_client = ollama.Client()
+        self.model_name = "phi3:mini"
         
-        # Check CUDA availability with proper error handling
+        # Test Ollama connection
         try:
-            if torch.cuda.is_available():
-                # Test CUDA functionality
-                test_tensor = torch.tensor([1.0]).cuda()
-                self.device = "cuda"
-                logger.info(f"CUDA is working properly. Device: {torch.cuda.get_device_name()}")
+            models = self.ollama_client.list()
+            available_models = [m.model for m in models['models']]
+            if self.model_name in available_models:
+                logger.info(f"✓ Ollama connected. Using {self.model_name}")
+                self.ollama_available = True
             else:
-                self.device = "cpu"
-                logger.info("CUDA not available, using CPU")
+                logger.error(f"Model {self.model_name} not found in Ollama. Available: {available_models}")
+                self.ollama_available = False
         except Exception as e:
-            logger.warning(f"CUDA initialization failed: {e}. Falling back to CPU.")
-            self.device = "cpu"
+            logger.error(f"Failed to connect to Ollama: {e}")
+            self.ollama_available = False
         
         self.embedding_service = EmbeddingService()
         self.initialized = True
-        logger.info(f"ChatService initialized on device: {self.device}")
+        logger.info("ChatService initialized with Ollama backend")
 
     def load_model(self):
+        """Load model through Ollama - no manual loading needed"""
+        if not self.ollama_available:
+            raise Exception("Ollama not available. Please ensure Ollama is running and phi3:mini is installed.")
+        
+        # Test the model
         try:
-            if self.model is None:
-                model_path = os.path.join(settings.BASE_DIR, "models/phi-2")
-                self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-                # Configure padding token
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                    self.tokenizer.padding_side = 'left'  # Better for casual language models
-
-                # Optimize device settings based on actual device
-                if self.device == "cuda":
-                    try:
-                        # Test CUDA again before using it
-                        test_tensor = torch.tensor([1.0]).cuda()
-                        torch_dtype = torch.float16  # Use float16 for better GPU performance
-                        device_map = "auto"
-                        
-                        # Enable GPU memory optimization
-                        torch.backends.cudnn.benchmark = True
-                        torch.backends.cuda.matmul.allow_tf32 = True
-                        torch.backends.cudnn.allow_tf32 = True
-                        
-                        # Clear GPU cache
-                        torch.cuda.empty_cache()
-                        
-                        logger.info(f"Using GPU: {torch.cuda.get_device_name()}")
-                        logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
-                        logger.info(f"Available GPU Memory: {torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated() / 1024**3:.1f} GB")
-                    except Exception as e:
-                        logger.warning(f"GPU failed during model loading: {e}. Falling back to CPU.")
-                        self.device = "cpu"
-                        torch_dtype = torch.float32
-                        device_map = None
-                else:
-                    torch_dtype = torch.float32
-                    device_map = None
-                    logger.info("Using CPU for model loading")
-
-                # Load model with optimized settings
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_path,
-                    torch_dtype=torch_dtype,
-                    trust_remote_code=True,
-                    device_map=device_map,
-                    low_cpu_mem_usage=True,
-                    use_cache=True,  # Enable KV cache for faster generation
-                )
-                self.model.config.pad_token_id = self.tokenizer.pad_token_id
-                self.model.eval()
-                
-                # Move to device if not using device_map
-                if device_map is None:
-                    self.model = self.model.to(self.device)
-                
-                logger.info(f"Successfully loaded Phi-2 model from {model_path} on {self.device}")
+            response = self.ollama_client.generate(
+                model=self.model_name,
+                prompt="Test",
+                stream=False
+            )
+            logger.info(f"✓ {self.model_name} model ready via Ollama")
         except Exception as e:
-            logger.error(f"Error loading Phi-2 model: {str(e)}")
+            logger.error(f"Error testing Ollama model: {str(e)}")
             raise
     
     def clear_gpu_cache(self):
@@ -480,7 +441,7 @@ class ChatService:
     #         logger.error(f"Error generating response: {str(e)}")
     #         raise
 
-    def get_relevant_context(self, query: str, top_k: int = 3) -> str:
+    def get_relevant_context(self, query: str, top_k: int = 5) -> str:
         """Retrieve relevant context from documents using RAG"""
         try:
             similar_chunks = self.embedding_service.search_similar_chunks(query, top_k=top_k)
@@ -509,7 +470,7 @@ class ChatService:
             for chunk_data in similar_chunks:
                 chunk = chunk_data['chunk']
                 context_parts.append(
-                    f"Document: {chunk.document.title}\nPage: {chunk.page_number}\nContent: {chunk.content}"
+                    f"Document: {chunk.document.title}\nContent: {chunk.content}"
                 )
             return "\n\n".join(context_parts)
         except Exception as e:
@@ -519,7 +480,7 @@ class ChatService:
     def generate_response(self, messages, similar_chunks=None):
         """Generate response with RAG (Retrieval-Augmented Generation) - optimized for speed"""
         try:
-            if self.model is None:
+            if not self.ollama_available:
                 self.load_model()
             
             user_prompt = messages[-1].content
@@ -530,32 +491,59 @@ class ChatService:
             # Require KB context; don't generate generic answers
             if not context:
                 return "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
-            formatted_prompt = f"""### Context (knowledge base excerpts):
-{context}
-
-### Task:
-You are a public health expert responding to a question using ONLY the information provided above in the Context section.
+            
+            # Create optimized prompt for Ollama
+            system_prompt = """You are a knowledgeable assistant that provides helpful, concise answers using ONLY the information from the provided knowledge base context. 
 
 STRICT RULES:
-- Do NOT use any outside or prior knowledge.
-- Do NOT guess or generalize.
-- Do NOT paraphrase based on your own understanding.
-- You MAY treat synonyms or clearly equivalent terms in the user question as matching those in the Context.
-- If the answer is not clearly stated in the Context or cannot be inferred through synonymous phrasing, respond exactly: "I could not find information in the knowledge base about that."
+1. Use ONLY information from the Context below - no outside knowledge
+2. If the answer isn't in the Context, respond: "I could not find information in the knowledge base about that."
+3. Write concisely and directly, as if giving a clear explanation to a colleague
+4. Reference document information naturally without mentioning page numbers or technical citations
+5. If multiple documents discuss the topic, synthesize the key points efficiently
+6. Answer the question fully but avoid unnecessary elaboration
 
-INSTRUCTIONS FOR YOUR RESPONSE:
-- Begin with a simple, direct explanation in full sentences.
-- Use details and examples from the Context where possible.
-- If helpful, synthesize across multiple excerpts in the Context.
-- End your answer with 2–4 concise bullet point takeaways that summarize the key ideas.
+FORMATTING REQUIREMENTS:
+- NEVER use comparison titles like "X vs Y", "X and Y", or "Comparison between X and Y"
+- Use consistent formatting throughout the response - do not mix bullets, numbering, and bold randomly
+- For comparison questions: Use separate bold headings for each concept, followed by clean paragraphs
+- For lists: Use ONLY bullet points OR ONLY numbers, never mix both in the same response
+- Keep formatting clean and organized - avoid cramming multiple formatting styles together
+- Each concept should have its own clear section with proper spacing
 
-Maintain a factual, professional tone. Do not mention or reference the Context section in your answer.
+STRICT FORMATTING RULES:
+- Comparison questions = Bold headings (**Concept**) + paragraphs (no bullets/numbers mixed in)
+- List questions = Bullet points OR numbered list (choose one, stick with it)
+- Definition questions = Paragraphs with optional bold key terms
+- Complex topics = Bold section headings + paragraphs
+- Never mix bullets and numbers in the same response
+- Never put numbered lists inside paragraph text
 
-User question:
-{user_prompt}
+CORRECT EXAMPLE for comparison:
+**Consultation**
 
-### Response:
-"""
+Consultation is an information-seeking practice where organizations seek community feedback on specific proposals. The Health Department informs communities about new systems and asks for their input to influence decision-making but maintains the primary role in leading initiatives.
+
+**Collaboration**
+
+Collaboration emphasizes building deeper relationships with community members who are represented equally as stakeholders. It involves creating strong systems of relationships where all parties have equal representation and accountability throughout partnership development.
+
+WRONG EXAMPLE (don't do this):
+Consultation vs Collaboration In Community Engagement In a consultation process... Key differences include: 1. Decision Influence: Consultation often results... 2. Relationship Level: Collaboration seeks...
+
+CORRECT EXAMPLE for lists:
+The framework identifies key considerations:
+
+- Transportation support for participants
+- Childcare provisions during meetings
+- Flexible scheduling options
+- Appropriate compensation for time"""
+
+            user_message = f"""CONTEXT (Knowledge Base):
+{context}
+
+USER QUESTION:
+{user_prompt}"""
 
 #             formatted_prompt = f"""### Context (knowledge base excerpts):
 # {context}
@@ -604,50 +592,37 @@ User question:
 # ### Response:
 # """
 
-            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.device)
-
-            # Optimized generation settings for completeness and speed
-            with torch.no_grad():
-                generation_kwargs = {
-                    **inputs,
-                    "max_new_tokens": 512,  # Allow longer, more complete answers
-                    "do_sample": False,
-                    "top_p": 0.8,
-                    "temperature": 0.0,
-                    "pad_token_id": self.tokenizer.pad_token_id,
-                    "eos_token_id": self.tokenizer.eos_token_id,
-                    "repetition_penalty": 1.1,
-                    "no_repeat_ngram_size": 3,
-                    "use_cache": True,  # Enable KV cache
-                    "num_beams": 1,     # Faster than beam search
-                    "early_stopping": True,
+            # Generate response using Ollama
+            response = self.ollama_client.chat(
+                model=self.model_name,
+                messages=[
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': user_message}
+                ],
+                stream=False,
+                options={
+                    'temperature': 0.3,
+                    'top_p': 0.9,
+                    'repeat_penalty': 1.1,
+                    'num_ctx': 4096,
                 }
-                
-                # Add CPU-specific optimizations
-                if self.device == "cpu":
-                    generation_kwargs["max_new_tokens"] = 256  # Balanced for CPU
-                    generation_kwargs["do_sample"] = False  # Greedy decoding is faster on CPU
-                
-                output = self.model.generate(**generation_kwargs)
-
-            response = self.tokenizer.decode(output[0], skip_special_tokens=True)
-            response = response.split("### Response:")[-1].strip()
-
-            if not response:
+            )
+            
+            generated_text = response['message']['content'].strip()
+            
+            if not generated_text:
                 return "I'm here to help! How can I assist you today?"
-
-            # Clear GPU cache after generation
-            self.clear_gpu_cache()
-            return response
+                
+            return generated_text
 
         except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
+            logger.error(f"Error generating response with Ollama: {str(e)}")
             return "I'm sorry, there was an error processing your request."
     
     def generate_response_stream(self, messages, similar_chunks=None) -> Generator[str, None, None]:
-        """Generate streaming response with RAG - fast real-time streaming like ChatGPT"""
+        """Generate streaming response with RAG using Ollama backend"""
         try:
-            if self.model is None:
+            if not self.ollama_available:
                 self.load_model()
             
             user_prompt = messages[-1].content
@@ -659,134 +634,83 @@ User question:
             if not context:
                 yield "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
                 return
-            formatted_prompt = f"""### Context (knowledge base excerpts):
-{context}
-
-### Task:
-You are a public health expert responding to a question using ONLY the information provided above in the Context section.
+            
+            # Create optimized prompt for Ollama
+            system_prompt = """You are a knowledgeable assistant that provides helpful, concise answers using ONLY the information from the provided knowledge base context. 
 
 STRICT RULES:
-- Do NOT use any outside or prior knowledge.
-- Do NOT guess or generalize.
-- Do NOT paraphrase based on your own understanding.
-- You MAY treat synonyms or clearly equivalent terms in the user question as matching those in the Context.
-- If the answer is not clearly stated in the Context or cannot be inferred through synonymous phrasing, respond exactly: "I could not find information in the knowledge base about that."
+1. Use ONLY information from the Context below - no outside knowledge
+2. If the answer isn't in the Context, respond: "I could not find information in the knowledge base about that."
+3. Write concisely and directly, as if giving a clear explanation to a colleague
+4. Reference document information naturally without mentioning page numbers or technical citations
+5. If multiple documents discuss the topic, synthesize the key points efficiently
+6. Answer the question fully but avoid unnecessary elaboration
 
-INSTRUCTIONS FOR YOUR RESPONSE:
-- Begin with a simple, direct explanation in full sentences.
-- Use details and examples from the Context where possible.
-- If helpful, synthesize across multiple excerpts in the Context.
-- End your answer with 2–4 concise bullet point takeaways that summarize the key ideas.
+FORMATTING REQUIREMENTS:
+- NEVER use comparison titles like "X vs Y", "X and Y", or "Comparison between X and Y"
+- Use consistent formatting throughout the response - do not mix bullets, numbering, and bold randomly
+- For comparison questions: Use separate bold headings for each concept, followed by clean paragraphs
+- For lists: Use ONLY bullet points OR ONLY numbers, never mix both in the same response
+- Keep formatting clean and organized - avoid cramming multiple formatting styles together
+- Each concept should have its own clear section with proper spacing
 
-Maintain a factual, professional tone. Do not mention or reference the Context section in your answer.
+STRICT FORMATTING RULES:
+- Comparison questions = Bold headings (**Concept**) + paragraphs (no bullets/numbers mixed in)
+- List questions = Bullet points OR numbered list (choose one, stick with it)
+- Definition questions = Paragraphs with optional bold key terms
+- Complex topics = Bold section headings + paragraphs
+- Never mix bullets and numbers in the same response
+- Never put numbered lists inside paragraph text
 
-User question:
-{user_prompt}
+CORRECT EXAMPLE for comparison:
+**Consultation**
 
-### Response:
-"""
+Consultation is an information-seeking practice where organizations seek community feedback on specific proposals. The Health Department informs communities about new systems and asks for their input to influence decision-making but maintains the primary role in leading initiatives.
 
-#             formatted_prompt = f"""### Context (knowledge base excerpts):
-# {context}
+**Collaboration**
 
-# ### Task:
-# You are a public health expert responding to a question using ONLY the information provided above in the Context section.
+Collaboration emphasizes building deeper relationships with community members who are represented equally as stakeholders. It involves creating strong systems of relationships where all parties have equal representation and accountability throughout partnership development.
 
-# STRICT RULES:
-# - Do NOT use any outside or prior knowledge.
-# - Do NOT guess or generalize.
-# - Do NOT paraphrase based on your own understanding.
-# - If the answer is not clearly stated in the Context, respond exactly: "I could not find information in the knowledge base about that."
+WRONG EXAMPLE (don't do this):
+Consultation vs Collaboration In Community Engagement In a consultation process... Key differences include: 1. Decision Influence: Consultation often results... 2. Relationship Level: Collaboration seeks...
 
+CORRECT EXAMPLE for lists:
+The framework identifies key considerations:
 
-# INSTRUCTIONS FOR YOUR RESPONSE:
-# - Begin with a simple, direct explanation in full sentences.
-# - Use details and examples from the Context where possible.
-# - If helpful, synthesize across multiple excerpts in the Context.
-# - End your answer with 2–4 concise bullet point takeaways that summarize the key ideas.
+- Transportation support for participants
+- Childcare provisions during meetings
+- Flexible scheduling options
+- Appropriate compensation for time"""
 
-# Maintain a factual, professional tone. Do not mention or reference the Context section in your answer.
+            user_message = f"""CONTEXT (Knowledge Base):
+{context}
 
-# User question:
-# {user_prompt}
+USER QUESTION:
+{user_prompt}"""
 
-# ### Response:
-# """
-
-
-
-
-            # Build prompt with strict instruction to use only the context
-#             formatted_prompt = f"""### Context (knowledge base excerpts):
-# {context}
-
-# ### Instruction:
-# Using ONLY the information in the Context, write a clear, well-structured answer in full paragraphs. Synthesize across documents when helpful. Do not mention that you used a context. If the answer is not present in the Context, reply exactly: "I could not find information in the knowledge base about that."
-
-# Guidelines:
-# - Aim for a concise but complete explanation (6-12 sentences)
-# - Use a neutral, informative tone
-# - Avoid bullet lists unless necessary
-
-# User question:
-# {user_prompt}
-
-# ### Response:
-# """
-
-            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.device)
-
-            # Use optimized generation settings for fast streaming
-            with torch.no_grad():
-                # Generate the entire response first (much faster)
-                generation_kwargs = {
-                    **inputs,
-                    "max_new_tokens": 512,  # Allow longer answers
-                    "do_sample": False,
-                    "top_p": 0.8,
-                    "temperature": 0.0,
-                    "pad_token_id": self.tokenizer.pad_token_id,
-                    "eos_token_id": self.tokenizer.eos_token_id,
-                    "repetition_penalty": 1.1,
-                    "no_repeat_ngram_size": 3,
-                    "use_cache": True,
-                    "num_beams": 1,
-                    "early_stopping": True,
+            # Stream response using Ollama
+            response_stream = self.ollama_client.chat(
+                model=self.model_name,
+                messages=[
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': user_message}
+                ],
+                stream=True,
+                options={
+                    'temperature': 0.3,
+                    'top_p': 0.9,
+                    'repeat_penalty': 1.1,
+                    'num_ctx': 4096,
                 }
-                
-                # Add CPU-specific optimizations
-                if self.device == "cpu":
-                    generation_kwargs["max_new_tokens"] = 256
-                    generation_kwargs["do_sample"] = False  # Greedy decoding is faster on CPU
-                
-                outputs = self.model.generate(**generation_kwargs)
-                
-                # Decode the full response
-                full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-                
-                # Extract only the response part (after "### Response:")
-                if "### Response:" in full_response:
-                    response_text = full_response.split("### Response:")[-1].strip()
-                else:
-                    response_text = full_response.strip()
-                
-                if not response_text:
-                    response_text = "I'm here to help! How can I assist you today?"
-                
-                # Stream the response in small chunks for fast, smooth effect
-                import time
-                chunk_size = 3  # Stream 3 characters at a time
-                for i in range(0, len(response_text), chunk_size):
-                    chunk = response_text[i:i + chunk_size]
-                    yield chunk
-                    # Very small delay for smooth streaming (like ChatGPT)
-                    time.sleep(0.01)  # 10ms delay - fast but visible
-                
-                # Clear GPU cache after generation
-                self.clear_gpu_cache()
+            )
+            
+            # Stream the response
+            for chunk in response_stream:
+                if chunk['message']['content']:
+                    yield chunk['message']['content']
 
         except Exception as e:
-            logger.error(f"Error generating streaming response: {str(e)}", exc_info=True)
+            logger.error(f"Error generating streaming response with Ollama: {str(e)}", exc_info=True)
             yield "I'm sorry, there was an error processing your request."
 
     # def generate_response(self, messages):
