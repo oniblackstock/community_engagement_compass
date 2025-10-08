@@ -420,14 +420,27 @@ def rename_session(request, session_id):
 
 
 @login_required
+@require_http_methods(["POST"])
 def delete_session(request, session_id):
     """Delete a chat session"""
-    if request.method == 'POST':
+    try:
         session = get_object_or_404(ChatSession, id=session_id, user=request.user)
         session.delete()
         cache.delete(f"user_sessions_{request.user.id}")
-        messages.success(request, 'Chat session deleted successfully.')
-    return redirect('chatbot:chat_home')
+        
+        # Check if this is an AJAX request
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', ''):
+            return JsonResponse({'status': 'success', 'message': 'Chat session deleted successfully.'})
+        else:
+            messages.success(request, 'Chat session deleted successfully.')
+            return redirect('chatbot:chat_home')
+    except Exception as e:
+        logger.error(f"Error deleting session: {str(e)}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', ''):
+            return JsonResponse({'status': 'error', 'message': 'Failed to delete chat session.'}, status=500)
+        else:
+            messages.error(request, 'Failed to delete chat session.')
+            return redirect('chatbot:chat_home')
 
 
 # Admin Views

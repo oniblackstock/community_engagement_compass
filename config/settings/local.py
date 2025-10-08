@@ -13,7 +13,7 @@ SECRET_KEY = env(
     default="dSFIiEgbeHlHpVt3RUS3IzQQseY1WT7wZbPlIcy0vY2lyKEHNAB2ciMxwcg7DzQX",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1"]  # noqa: S104
+ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1","nonreformational-impoliticly-raleigh.ngrok-free.dev"]  # noqa: S104
 
 # CACHES
 # ------------------------------------------------------------------------------
@@ -66,3 +66,6 @@ INSTALLED_APPS += ["django_extensions"]
 
 # Your stuff...
 # ------------------------------------------------------------------------------
+CSRF_TRUSTED_ORIGINS = [
+    "https://nonreformational-impoliticly-raleigh.ngrok-free.dev",
+]

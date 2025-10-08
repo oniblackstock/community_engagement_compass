@@ -35,7 +35,6 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: var(--light-bg);
-            height: 100vh;
             margin: 0;
         }
 
@@ -168,6 +167,113 @@
         /* Ensure long chat titles truncate and don't hide the action menu */
         .chat-history-item a { min-width: 0; }
         .chat-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* Fix dropdown menu styling and z-index issues */
+        .chat-history-item .dropdown {
+            position: relative;
+        }
+
+        .chat-history-item .dropdown-toggle {
+            border: none;
+            background: transparent;
+            color: var(--secondary-color);
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+        }
+
+        .chat-history-item:hover .dropdown-toggle {
+            opacity: 1;
+            background: rgba(44, 46, 101, 0.1);
+        }
+
+        .chat-history-item .dropdown-menu {
+            z-index: 1050;
+            min-width: 150px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid var(--border-color);
+        }
+
+        .chat-history-item .dropdown-item {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .chat-history-item .dropdown-item:hover {
+            background-color: var(--light-bg);
+        }
+
+        .chat-history-item .dropdown-item:focus {
+            background-color: var(--light-bg);
+            outline: none;
+        }
+
+        /* Custom dropdown implementation */
+        .custom-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .custom-dropdown-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: white;
+            min-width: 150px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            z-index: 1050;
+            padding: 0.25rem 0;
+            margin-top: 2px;
+        }
+
+        .custom-dropdown-menu.show {
+            display: block;
+        }
+
+        .custom-dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 0.5rem 1rem;
+            clear: both;
+            font-weight: 400;
+            color: #212529;
+            text-align: inherit;
+            text-decoration: none;
+            white-space: nowrap;
+            background-color: transparent;
+            border: 0;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .custom-dropdown-item:hover,
+        .custom-dropdown-item:focus {
+            color: #1e2125;
+            background-color: var(--light-bg);
+            outline: none;
+        }
+
+        .custom-dropdown-item.text-danger:hover {
+            color: white;
+            background-color: var(--danger-color);
+        }
+
+        .custom-dropdown-divider {
+            height: 0;
+            margin: 0.25rem 0;
+            overflow: hidden;
+            border-top: 1px solid var(--border-color);
+        }
 
         .chat-main {
             flex: 1;
@@ -779,20 +885,19 @@
                         <i class="fas fa-{% if session.session_name == "New Chat" %}plus{% else %}comments{% endif %}"></i>
                         <span class="chat-title ms-2">{{ session.session_name }}</span>
                     </a>
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-link text-muted p-0" type="button" id="sessionMenu{{ forloop.counter }}" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More options">
+                    <div class="custom-dropdown">
+                        <button class="btn btn-sm btn-link text-muted p-1" type="button" onclick="toggleCustomDropdown(this)" aria-label="More options" style="border: none;">
                             <i class="fas fa-ellipsis-vertical"></i>
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="sessionMenu{{ forloop.counter }}">
-                            <li>
-                                <form method="post" action="{% url 'chatbot:delete_session' session_id=session.id %}" onsubmit="return confirm('Delete this chat? This cannot be undone.');">
-                                    {% csrf_token %}
-                                    <button type="submit" class="dropdown-item text-danger">
-                                        <i class="fas fa-trash me-2"></i>Delete chat
-                                    </button>
-                                </form>
-                            </li>
-                        </ul>
+                        <div class="custom-dropdown-menu">
+                            <button type="button" class="custom-dropdown-item" onclick="renameSession('{{ session.id }}', '{{ session.session_name|escapejs }}')">
+                                <i class="fas fa-edit me-2"></i>Rename chat
+                            </button>
+                            <div class="custom-dropdown-divider"></div>
+                            <button type="button" class="custom-dropdown-item text-danger" onclick="deleteSession('{{ session.id }}')">
+                                <i class="fas fa-trash me-2"></i>Delete chat
+                            </button>
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
@@ -1440,6 +1545,20 @@
             window.chatInterface = new EnhancedChatInterface();
             console.log('Enhanced chat interface initialized with streaming support');
 
+            // Debug: Check if our functions are available
+            console.log('toggleCustomDropdown function available:', typeof toggleCustomDropdown);
+            console.log('renameSession function available:', typeof renameSession);
+            console.log('deleteSession function available:', typeof deleteSession);
+            console.log('getCsrfToken function available:', typeof getCsrfToken);
+
+            // Debug: Check if we have any chat sessions
+            const chatSessions = document.querySelectorAll('.chat-history-item');
+            console.log('Found', chatSessions.length, 'chat sessions');
+
+            // Debug: Check dropdown buttons
+            const dropdownButtons = document.querySelectorAll('.custom-dropdown button');
+            console.log('Found', dropdownButtons.length, 'dropdown buttons');
+
             // Show/Hide example message depending on whether there are any real messages
             const example = document.getElementById('example-message');
             const chatMessages = document.getElementById('chat-messages');
@@ -1461,6 +1580,167 @@
             if (window.chatInterface) {
                 window.chatInterface.scrollToBottom();
             }
+        }
+
+        // Chat management functions
+        function toggleCustomDropdown(button) {
+            console.log('toggleCustomDropdown called with button:', button);
+            
+            // Close all other dropdowns first
+            document.querySelectorAll('.custom-dropdown-menu.show').forEach(menu => {
+                if (menu !== button.nextElementSibling) {
+                    menu.classList.remove('show');
+                }
+            });
+            
+            // Toggle the clicked dropdown
+            const menu = button.nextElementSibling;
+            console.log('Menu element:', menu);
+            menu.classList.toggle('show');
+            console.log('Menu now has show class:', menu.classList.contains('show'));
+            
+            // Close dropdown when clicking outside
+            if (menu.classList.contains('show')) {
+                const closeDropdown = (e) => {
+                    if (!button.contains(e.target) && !menu.contains(e.target)) {
+                        menu.classList.remove('show');
+                        document.removeEventListener('click', closeDropdown);
+                    }
+                };
+                setTimeout(() => {
+                    document.addEventListener('click', closeDropdown);
+                }, 0);
+            }
+        }
+
+        function renameSession(sessionId, currentName) {
+            console.log('renameSession called with:', sessionId, currentName);
+            
+            // Close the dropdown first
+            document.querySelectorAll('.custom-dropdown-menu.show').forEach(menu => {
+                menu.classList.remove('show');
+            });
+            
+            const newName = prompt('Enter new chat name:', currentName);
+            console.log('User entered new name:', newName);
+            
+            if (newName && newName.trim() && newName.trim() !== currentName) {
+                console.log('Making rename request...');
+                fetch(`/chat/session/${sessionId}/rename/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        name: newName.trim()
+                    })
+                })
+                .then(response => {
+                    console.log('Rename response:', response);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Rename data:', data);
+                    if (data.status === 'success') {
+                        // Update the session name in the sidebar
+                        const sessionElement = document.querySelector(`[data-session-id="${sessionId}"] .chat-title`);
+                        if (sessionElement) {
+                            sessionElement.textContent = data.name;
+                        }
+                        
+                        // Update the header if this is the active session
+                        const sessionHeader = document.getElementById('session-name');
+                        if (sessionHeader && window.location.pathname.includes(sessionId)) {
+                            sessionHeader.textContent = data.name;
+                        }
+                        
+                        // Show success message
+                        showNotification('Chat renamed successfully', 'success');
+                    } else {
+                        showNotification(data.error || 'Failed to rename chat', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error renaming session:', error);
+                    showNotification('Failed to rename chat', 'error');
+                });
+            }
+        }
+
+        function deleteSession(sessionId) {
+            console.log('deleteSession called with:', sessionId);
+            
+            // Close the dropdown first
+            document.querySelectorAll('.custom-dropdown-menu.show').forEach(menu => {
+                menu.classList.remove('show');
+            });
+            
+            if (confirm('Delete this chat? This cannot be undone.')) {
+                console.log('User confirmed delete, making request...');
+                fetch(`/chat/session/${sessionId}/delete/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    }
+                })
+                .then(response => {
+                    console.log('Delete response:', response);
+                    if (response.ok) {
+                        // Remove the session from the sidebar
+                        const sessionElement = document.querySelector(`[data-session-id="${sessionId}"]`);
+                        if (sessionElement) {
+                            sessionElement.remove();
+                        }
+                        
+                        // If this was the active session, redirect to chat home
+                        if (window.location.pathname.includes(sessionId)) {
+                            window.location.href = '/chat/';
+                        }
+                        
+                        showNotification('Chat deleted successfully', 'success');
+                    } else {
+                        showNotification('Failed to delete chat', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting session:', error);
+                    showNotification('Failed to delete chat', 'error');
+                });
+            } else {
+                console.log('User cancelled delete');
+            }
+        }
+
+        function getCsrfToken() {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+            console.log('CSRF token element:', csrfToken);
+            console.log('CSRF token value:', csrfToken ? csrfToken.value : 'NOT FOUND');
+            return csrfToken ? csrfToken.value : '';
+        }
+
+        function showNotification(message, type = 'info') {
+            // Create a simple notification
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} alert-dismissible fade show`;
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            notification.style.zIndex = '9999';
+            notification.style.minWidth = '300px';
+            notification.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto-remove after 3 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 3000);
         }
     </script>
 {% endblock %}
