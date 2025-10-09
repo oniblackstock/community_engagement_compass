@@ -588,6 +588,83 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
 
+        /* Remove underlines but add proper color contrast for readability */
+        .message-content * {
+            text-decoration: none !important;
+            text-decoration-line: none !important;
+            text-decoration-style: none !important;
+            text-decoration-color: transparent !important;
+            border-bottom: none !important;
+            -webkit-text-decoration: none !important;
+            -moz-text-decoration: none !important;
+        }
+
+        /* Headings - darker for emphasis */
+        .message-content h1,
+        .message-content h2,
+        .message-content h3,
+        .message-content h4,
+        .message-content h5,
+        .message-content h6 {
+            color: #1a252f !important;
+            font-weight: 600 !important;
+            margin: 1rem 0 0.5rem 0 !important;
+        }
+
+        /* Paragraphs - readable gray */
+        .message-content p {
+            color: #2c3e50 !important;
+            line-height: 1.6 !important;
+            margin: 0.5rem 0 !important;
+        }
+
+        /* Lists - same as paragraphs */
+        .message-content ul,
+        .message-content ol {
+            color: #2c3e50 !important;
+            margin: 0.5rem 0 !important;
+            padding-left: 1.5rem !important;
+        }
+
+        .message-content li {
+            color: #2c3e50 !important;
+            margin: 0.25rem 0 !important;
+        }
+
+        /* Strong text - slightly darker */
+        .message-content strong {
+            color: #1a252f !important;
+            font-weight: 600 !important;
+        }
+
+        /* Emphasis - same as paragraph */
+        .message-content em {
+            color: #2c3e50 !important;
+            font-style: italic !important;
+        }
+
+        /* Code elements */
+        .message-content code,
+        .message-content pre {
+            color: #2c3e50 !important;
+            background: #f8f9fa !important;
+            padding: 0.2rem 0.4rem !important;
+            border-radius: 3px !important;
+            font-family: 'Courier New', monospace !important;
+        }
+
+        /* Links and spans - prevent blue coloring */
+        .message-content a,
+        .message-content a:link,
+        .message-content a:visited,
+        .message-content a:hover,
+        .message-content a:active,
+        .message-content span {
+            color: #2c3e50 !important;
+            text-decoration: none !important;
+            cursor: default !important;
+        }
+
         .message-sources {
             margin-top: 1rem;
             padding: 0.75rem;
@@ -983,8 +1060,8 @@
                         {% endif %}
                     </div>
                     <div class="message-content">
-                        <!-- {{ message.content|linebreaks }} -->
-                        {{ message.content|markdownify }}
+                         <!-- Render HTML directly since responses are now in HTML format -->
+                         {{ message.content|safe }}
                         {% if message.source_links.all %}
                         <div class="message-sources">
                             <strong><i class="fas fa-book me-1"></i>Sources:</strong>
@@ -1327,17 +1404,13 @@
                 // Store raw text in data attribute
                 textContainer.dataset.rawText = currentText;
                 
-                // Apply aggressive formatting every time
-                try {
-                    // Clean the text first (remove colons, fix formatting)
-                    const cleanedText = this.cleanTextFormatting(currentText);
-                    const formattedContent = this.formatMessage(cleanedText);
-                    textContainer.innerHTML = formattedContent;
-                } catch (e) {
-                    // Fallback: apply basic cleaning and use as text
-                    const cleanedText = this.cleanTextFormatting(currentText);
-                    textContainer.textContent = cleanedText;
-                }
+                 // Set HTML content directly (model generates HTML)
+                 try {
+                     textContainer.innerHTML = this.formatMessage(currentText);
+                 } catch (e) {
+                     // Fallback: use as plain text
+                     textContainer.textContent = currentText;
+                 }
                 
                 messageContent.appendChild(textContainer);
                 
@@ -1403,20 +1476,19 @@
                         messageContent.innerHTML = formattedContent;
                     }
                 } else if (this.currentStreamingMessage) {
-                    // Fallback: Apply final formatting to the complete streamed text
-                    const streamingTextEl = this.currentStreamingMessage.querySelector('.streaming-text');
-                    if (streamingTextEl) {
-                        // Get the complete raw markdown text
-                        const finalText = streamingTextEl.dataset.rawText || streamingTextEl.textContent || streamingTextEl.innerText || '';
-                        if (finalText.trim()) {
-                            // Apply minimal cleaning and proper markdown formatting
-                            const cleanedText = this.cleanTextFormatting(finalText);
-                            const formattedContent = this.formatMessage(cleanedText);
-                            streamingTextEl.innerHTML = formattedContent;
-                            // Remove the raw text data attribute as we're done streaming
-                            delete streamingTextEl.dataset.rawText;
-                        }
-                    }
+                     // Fallback: Apply final formatting to the complete streamed HTML
+                     const streamingTextEl = this.currentStreamingMessage.querySelector('.streaming-text');
+                     if (streamingTextEl) {
+                         // Get the complete raw HTML text
+                         const finalHTML = streamingTextEl.dataset.rawText || streamingTextEl.innerHTML || '';
+                         if (finalHTML.trim()) {
+                             // Apply formatting to the complete HTML
+                             const formattedContent = this.formatMessage(finalHTML);
+                             streamingTextEl.innerHTML = formattedContent;
+                             // Remove the raw text data attribute as we're done streaming
+                             delete streamingTextEl.dataset.rawText;
+                         }
+                     }
                 }
                 
                 // Add sources if available
@@ -1556,42 +1628,17 @@
                 messageContent.appendChild(sourcesDiv);
             }
 
-            formatMessage(content) {
-                // Check if marked is available, if not, fall back to basic formatting
-                if (typeof marked === 'undefined') {
-                    console.warn('Marked.js not loaded, using fallback formatting');
-                    return this.fallbackFormatMessage(content);
-                }
-                
-                if (!content || !content.trim()) {
-                    return '';
-                }
-                
-                // Configure marked for clean output (matches Python markdown library)
-                marked.setOptions({
-                    breaks: false,  // Don't auto-convert line breaks (let markdown handle it)
-                    gfm: true,      // GitHub flavored markdown
-                    sanitize: false // We'll handle this ourselves
-                });
-                
-                // Clean the content using the same function as streaming
-                content = this.cleanTextFormatting(content);
-                
-                try {
-                    // Parse markdown to HTML using marked.js
-                    let html = marked.parse(content);
-                    
-                    // Post-process to ensure clean output
-                    html = html.replace(/<p>\s*<\/p>/g, '');  // Remove empty paragraphs
-                    html = html.replace(/(<br\s*\/?>\s*){2,}/g, '<br>');  // Remove multiple line breaks
-                    
-                    // Basic sanitization - remove potentially harmful elements
-                    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-                } catch (error) {
-                    console.error('Error parsing markdown:', error);
-                    return this.fallbackFormatMessage(content);
-                }
-            }
+             formatMessage(content) {
+                 // Content is already in HTML format from the model, just return it with basic sanitization
+                 if (!content || !content.trim()) {
+                     return '';
+                 }
+                 
+                 // Basic sanitization - remove potentially harmful elements
+                 content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+                 
+                 return content;
+             }
 
             fallbackFormatMessage(content) {
                 // Clean fallback formatting matching backend approach
