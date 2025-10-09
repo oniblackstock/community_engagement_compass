@@ -461,7 +461,7 @@
             margin-bottom: 0;
         }
 
-        /* Bold headings formatting - more specific selectors */
+        /* Bold headings formatting - enhanced selectors */
         .message-content p > strong:only-child {
             display: block;
             font-weight: 600;
@@ -478,6 +478,59 @@
         .message-content p:has(> strong:only-child) + ul,
         .message-content p:has(> strong:only-child) + ol {
             margin-top: 0.25rem;
+        }
+
+        /* Enhanced formatting for standalone bold headings */
+        .message-content strong:only-child {
+            display: block;
+            font-weight: 600;
+            font-size: 1.1em;
+            color: var(--primary-color);
+            margin: 1.5rem 0 0.75rem 0;
+            line-height: 1.3;
+        }
+
+        /* Enhanced formatting for mixed content and headings */
+        .message-content strong {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        /* Ensure proper spacing for headings that end with colon */
+        .message-content strong:contains(':'),
+        .message-content p strong:contains(':') {
+            display: block;
+            margin: 1rem 0 0.5rem 0;
+            font-size: 1.1em;
+            color: var(--primary-color);
+        }
+
+        /* Better list formatting */
+        .message-content ul li,
+        .message-content ol li {
+            margin: 0.5rem 0;
+            line-height: 1.6;
+        }
+
+        /* Ensure proper spacing between sections */
+        .message-content h1 + p,
+        .message-content h2 + p,
+        .message-content h3 + p,
+        .message-content h4 + p,
+        .message-content h5 + p,
+        .message-content h6 + p,
+        .message-content strong + p {
+            margin-top: 0.75rem;
+        }
+
+        /* Better paragraph spacing after headings */
+        .message-content p + h1,
+        .message-content p + h2,
+        .message-content p + h3,
+        .message-content p + h4,
+        .message-content p + h5,
+        .message-content p + h6 {
+            margin-top: 1.5rem;
         }
 
         .message-content blockquote {
@@ -1250,11 +1303,16 @@
                     this.streamingCursor.remove();
                 }
                 
-                // Get current text content (without HTML)
+                // Get current raw text content (maintain raw text state)
                 const currentTextNode = messageContent.querySelector('.streaming-text');
-                let currentText = currentTextNode ? currentTextNode.textContent : '';
+                let currentText = '';
                 
-                // Append new token
+                // Get raw text from the data attribute if it exists, otherwise from textContent
+                if (currentTextNode) {
+                    currentText = currentTextNode.dataset.rawText || currentTextNode.textContent || '';
+                }
+                
+                // Append new token to raw text
                 currentText += token;
                 
                 // Remove old text node if it exists
@@ -1265,7 +1323,21 @@
                 // Create a container for the streaming text
                 const textContainer = document.createElement('div');
                 textContainer.className = 'streaming-text';
-                textContainer.innerHTML = this.formatMessage(currentText);
+                
+                // Store raw text in data attribute
+                textContainer.dataset.rawText = currentText;
+                
+                // Apply aggressive formatting every time
+                try {
+                    // Clean the text first (remove colons, fix formatting)
+                    const cleanedText = this.cleanTextFormatting(currentText);
+                    const formattedContent = this.formatMessage(cleanedText);
+                    textContainer.innerHTML = formattedContent;
+                } catch (e) {
+                    // Fallback: apply basic cleaning and use as text
+                    const cleanedText = this.cleanTextFormatting(currentText);
+                    textContainer.textContent = cleanedText;
+                }
                 
                 messageContent.appendChild(textContainer);
                 
@@ -1276,14 +1348,91 @@
                 
                 this.scrollToBottom();
             }
+            
+            cleanTextFormatting(text) {
+                if (!text) return '';
+
+                // 1) Remove horizontal rules and hash symbols that shouldn't be visible
+                text = text.replace(/^---+\s*$/gm, '');  // Remove horizontal rules on their own line
+                text = text.replace(/^#{1,6}\s+/gm, '**');  // Convert ### headings to **
+                text = text.replace(/\s---+\s/g, ' ');  // Remove --- in middle of text
+                
+                // 2) Remove special symbols and emojis that shouldn't be in responses
+                text = text.replace(/[✅❌]/g, '');  // Remove checkmarks and crosses
+                
+                // 3) Bullet normalization: convert leading '- ' to '• ', fix '• - ', collapse duplicates
+                text = text.replace(/^(?:-\s+)/gm, '• ');
+                text = text.replace(/^•\s*-\s*/gm, '• ');
+                text = text.replace(/^•\s*•\s*/gm, '• ');
+
+                // Convert inline separators to proper bullets on new lines
+                text = text.replace(/([^\n])\s-\s([A-Za-z])/g, '$1\n• $2');
+                text = text.replace(/([^\n])\s•\s/g, '$1\n• ');
+
+                // 4) CRITICAL: Ensure bold headings have proper line breaks after them
+                // This handles both cases: bold with newline, and bold directly followed by text
+                // First, ensure bold headings followed directly by text get a newline
+                text = text.replace(/(\*\*[^*\n]+\*\*)\s+([A-Z])/g, '$1\n\n$2');
+                // Then ensure bold headings with only one newline get two
+                text = text.replace(/^(\*\*[^*\n]+\*\*)\n(?!\n)/gm, '$1\n\n');
+                // Also handle bold headings that end with ? or : followed by text
+                text = text.replace(/(\*\*[^*]+[?:]\*\*)\s+([A-Za-z])/g, '$1\n\n$2');
+
+                // 5) Replace remaining spaced hyphens with em dashes (non-bullet usage)
+                text = text.replace(/\s-\s/g, ' — ');
+
+                // 6) Collapse excessive blank lines/spaces
+                text = text.replace(/\n{3,}/g, '\n\n');
+                text = text.replace(/[ \t]+/g, ' ');
+
+                return text.trim();
+            }
 
             handleStreamingComplete(data) {
                 this.updateSession(data);
                 
+                // Use the final_content from server if available (already cleaned and processed)
+                if (this.currentStreamingMessage && data.final_content) {
+                    const messageContent = this.currentStreamingMessage.querySelector('.message-content');
+                    if (messageContent) {
+                        // Clear current content
+                        messageContent.innerHTML = '';
+                        
+                        // Apply formatting to the server-cleaned content
+                        const formattedContent = this.formatMessage(data.final_content);
+                        messageContent.innerHTML = formattedContent;
+                    }
+                } else if (this.currentStreamingMessage) {
+                    // Fallback: Apply final formatting to the complete streamed text
+                    const streamingTextEl = this.currentStreamingMessage.querySelector('.streaming-text');
+                    if (streamingTextEl) {
+                        // Get the complete raw markdown text
+                        const finalText = streamingTextEl.dataset.rawText || streamingTextEl.textContent || streamingTextEl.innerText || '';
+                        if (finalText.trim()) {
+                            // Apply minimal cleaning and proper markdown formatting
+                            const cleanedText = this.cleanTextFormatting(finalText);
+                            const formattedContent = this.formatMessage(cleanedText);
+                            streamingTextEl.innerHTML = formattedContent;
+                            // Remove the raw text data attribute as we're done streaming
+                            delete streamingTextEl.dataset.rawText;
+                        }
+                    }
+                }
+                
                 // Add sources if available
-                if (data.sources && data.sources.length > 0) {
+                if (data.sources && data.sources.length > 0 && this.currentStreamingMessage) {
                     this.addSourcesToMessage(this.currentStreamingMessage, data.sources);
                 }
+                
+                // Remove streaming cursor
+                if (this.streamingCursor) {
+                    this.streamingCursor.remove();
+                    this.streamingCursor = null;
+                }
+                
+                // Reset streaming state
+                this.currentStreamingMessage = null;
+                this.isStreaming = false;
             }
 
             handleStreamingError(errorMessage) {
@@ -1414,33 +1563,27 @@
                     return this.fallbackFormatMessage(content);
                 }
                 
-                // Configure marked for better formatting
+                if (!content || !content.trim()) {
+                    return '';
+                }
+                
+                // Configure marked for clean output (matches Python markdown library)
                 marked.setOptions({
-                    breaks: true,  // Enable line breaks
-                    gfm: true,     // GitHub flavored markdown
+                    breaks: false,  // Don't auto-convert line breaks (let markdown handle it)
+                    gfm: true,      // GitHub flavored markdown
                     sanitize: false // We'll handle this ourselves
                 });
                 
-                // Preprocessing: Fix common formatting issues
-                // Fix bullet points that are concatenated without line breaks
-                content = content.replace(/(\.)(\s*-\s)/g, '.\n\n$2');
-                content = content.replace(/([a-z])\s*-\s/g, '$1\n\n- ');
-                
-                // Fix bold headings spacing - ensure blank lines before and after
-                content = content.replace(/([^\n])\n(\*\*[^*]+\*\*)/g, '$1\n\n$2');
-                content = content.replace(/(\*\*[^*]+\*\*)\n([^\n])/g, '$1\n\n$2');
-                
-                // Ensure proper spacing around bullet points
-                content = content.replace(/([^\n])\n(- )/g, '$1\n\n$2');
-                content = content.replace(/([^\n])\n(\d+\. )/g, '$1\n\n$2');
-                content = content.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2');
-                
-                // Clean up multiple consecutive newlines (but preserve double newlines)
-                content = content.replace(/\n{3,}/g, '\n\n');
+                // Clean the content using the same function as streaming
+                content = this.cleanTextFormatting(content);
                 
                 try {
-                    // Parse markdown to HTML
-                    const html = marked.parse(content);
+                    // Parse markdown to HTML using marked.js
+                    let html = marked.parse(content);
+                    
+                    // Post-process to ensure clean output
+                    html = html.replace(/<p>\s*<\/p>/g, '');  // Remove empty paragraphs
+                    html = html.replace(/(<br\s*\/?>\s*){2,}/g, '<br>');  // Remove multiple line breaks
                     
                     // Basic sanitization - remove potentially harmful elements
                     return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
@@ -1451,21 +1594,19 @@
             }
 
             fallbackFormatMessage(content) {
-                // Fallback formatting if marked.js isn't available
-                // Fix concatenated bullet points
-                content = content.replace(/(\.)(\s*-\s)/g, '.\n\n$2');
-                content = content.replace(/([a-z])\s*-\s/g, '$1\n\n- ');
+                // Clean fallback formatting matching backend approach
+                if (!content || !content.trim()) {
+                    return '';
+                }
                 
-                // Ensure proper spacing around bullet points and headings
-                content = content.replace(/([^\n])\n(- )/g, '$1\n\n$2');
-                content = content.replace(/([^\n])\n(\d+\. )/g, '$1\n\n$2');
-                content = content.replace(/([^\n])\n(#{1,6} )/g, '$1\n\n$2');
+                // Clean using the same function
+                content = this.cleanTextFormatting(content);
                 
-                // Clean up multiple newlines
-                content = content.replace(/\n{3,}/g, '\n\n');
-                
-                // Basic HTML conversion
+                // Convert to HTML - escape first
                 content = this.escapeHtml(content);
+                
+                // Convert bold text
+                content = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
                 
                 // Convert headings
                 content = content.replace(/^(#{1,6})\s+(.+)$/gm, (match, hashes, title) => {
@@ -1473,22 +1614,75 @@
                     return `<h${level}>${title.trim()}</h${level}>`;
                 });
                 
-                // Convert bullet points
-                content = content.replace(/^-\s+(.+)$/gm, '<li>$1</li>');
+                // Convert bullet points to proper lists (like backend)
+                const lines = content.split('\n');
+                const resultLines = [];
+                let inList = false;
+                let currentParagraph = [];
                 
-                // Wrap consecutive list items
-                content = content.replace(/(<li>.*<\/li>\s*)+/gs, '<ul>$&</ul>');
-                
-                // Convert line breaks
-                content = content.replace(/\n\n/g, '</p><p>');
-                content = content.replace(/\n/g, '<br>');
-                
-                // Wrap in paragraphs if not already wrapped
-                if (!content.startsWith('<')) {
-                    content = '<p>' + content + '</p>';
+                for (let line of lines) {
+                    line = line.trim();
+                    
+                    // Bullet point line
+                    if (/^[-*]\s+/.test(line)) {
+                        if (currentParagraph.length > 0) {
+                            resultLines.push(`<p>${currentParagraph.join(' ')}</p>`);
+                            currentParagraph = [];
+                        }
+                        if (!inList) {
+                            resultLines.push('<ul>');
+                            inList = true;
+                        }
+                        // Remove bullet symbol and wrap in <li>
+                        const listContent = line.replace(/^[-*]\s+/, '');
+                        resultLines.push(`<li>${listContent}</li>`);
+                    
+                    // Standalone bold text (treat as heading)
+                    } else if (/^\*\*[^*]+\*\*$/.test(line)) {
+                        if (inList) {
+                            resultLines.push('</ul>');
+                            inList = false;
+                        }
+                        if (currentParagraph.length > 0) {
+                            resultLines.push(`<p>${currentParagraph.join(' ')}</p>`);
+                            currentParagraph = [];
+                        }
+                        // Convert to standalone strong element (will be styled as heading by CSS)
+                        const headingText = line.slice(2, -2); // Remove ** from start and end
+                        resultLines.push(`<strong>${headingText}</strong>`);
+                    
+                    // Empty line
+                    } else if (!line) {
+                        if (inList) {
+                            resultLines.push('</ul>');
+                            inList = false;
+                        }
+                        if (currentParagraph.length > 0) {
+                            resultLines.push(`<p>${currentParagraph.join(' ')}</p>`);
+                            currentParagraph = [];
+                        }
+                    
+                    // Regular text line
+                    } else {
+                        if (inList) {
+                            resultLines.push('</ul>');
+                            inList = false;
+                        }
+                        currentParagraph.push(line);
+                    }
                 }
                 
-                return content;
+                // Close any open list
+                if (inList) {
+                    resultLines.push('</ul>');
+                }
+                
+                // Add any remaining paragraph
+                if (currentParagraph.length > 0) {
+                    resultLines.push(`<p>${currentParagraph.join(' ')}</p>`);
+                }
+                
+                return resultLines.join('\n');
             }
 
             escapeHtml(text) {

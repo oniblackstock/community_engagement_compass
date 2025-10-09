@@ -36,6 +36,7 @@ def add_streaming_to_chat_service():
             # Generate the complete response first
             full_response = self.generate_response(messages, similar_chunks)
             
+            # Don't clean here - let JavaScript handle cleaning consistently
             # Split response into words and yield them with small delay
             words = full_response.split()
             for i, word in enumerate(words):
@@ -215,12 +216,12 @@ def send_message(request):
         else:
             # Generate response with context
             response_content = chat_service.generate_response(messages, similar_chunks)
-
-            # Create assistant message
+            
+            # Save ORIGINAL markdown to database - preserve formatting structure
             assistant_message = ChatMessage.objects.create(
                 session=session,
                 message_type='assistant',
-                content=response_content
+                content=response_content  # Save original markdown with full structure
             )
 
             # Invalidate cache after saving message
@@ -256,9 +257,10 @@ def send_message(request):
                         'url': request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
                     })
 
+            # Send original markdown - let JavaScript handle cleaning and formatting consistently
             return JsonResponse({
                 'status': 'success',
-                'response': response_content,
+                'response': response_content,  # Send original markdown
                 'session_name': session.session_name,
                 'session_id': str(session.id),
                 'sources': sources_data
@@ -271,24 +273,29 @@ def send_message(request):
 
 def send_message_stream(request, session, messages, similar_chunks=None):
     """Fixed streaming response that works with Django dev server"""
+    from .services import post_process_response
+    
     def generate_stream():
         try:
             full_response = ""
             
-            # Generate streaming response
+            # Generate streaming response - tokens come in real-time now
             for token in chat_service.generate_response_stream(messages, similar_chunks):
-                if token.strip():
+                if token:
                     full_response += token
                     
-                    # Send token as Server-Sent Event (without Connection header)
+                    # Send token as Server-Sent Event for real-time display
                     yield f"data: {json.dumps({'token': token, 'type': 'token'})}\n\n"
             
-            # Save the complete response to database
+            # Apply post-processing to the complete response for proper formatting
             if full_response.strip():
+                cleaned_response = post_process_response(full_response)
+                
+                # Save the cleaned response to database
                 assistant_message = ChatMessage.objects.create(
                     session=session,
                     message_type='assistant',
-                    content=full_response
+                    content=cleaned_response  # Save cleaned markdown
                 )
                 
                 # Invalidate cache after saving message
@@ -325,14 +332,13 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                 else:
                     sources_data = []
             
-            # Do not append sources into the streamed text; UI will display from payload
-
-            # Send completion signal
+            # Send completion signal with cleaned content for final rendering
             yield f"data: {json.dumps({
                 'type': 'complete', 
                 'session_name': session.session_name, 
                 'session_id': str(session.id),
-                'sources': sources_data
+                'sources': sources_data,
+                'final_content': cleaned_response if full_response.strip() else ''
             })}\n\n"
             
         except Exception as e:
