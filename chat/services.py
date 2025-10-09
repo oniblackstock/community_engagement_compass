@@ -1063,7 +1063,7 @@ class EmbeddingService:
             # Fallback to full rebuild
             self.update_faiss_index()
 
-    def search_similar_chunks(self, query_text, top_k=40, similarity_threshold=0.4):
+    def search_similar_chunks(self, query_text, top_k=30, similarity_threshold=0.4):
         """Search for similar chunks using FAISS with improved accuracy"""
         try:
             if not os.path.exists(self.index_path) or not os.path.exists(self.mapping_path):
@@ -1417,7 +1417,8 @@ class ChatService:
             context_parts = []
             for chunk_data in similar_chunks:
                 chunk = chunk_data['chunk']
-                context_parts.append(f"Document: {chunk.document.title}\nContent: {chunk.content}")
+                # Don't include document labels - just the content
+                context_parts.append(chunk.content)
             
             logger.info(f"Found {len(similar_chunks)} relevant chunks for context")
             return "\n\n".join(context_parts)
@@ -1433,9 +1434,8 @@ class ChatService:
             context_parts = []
             for chunk_data in similar_chunks:
                 chunk = chunk_data['chunk']
-                context_parts.append(
-                    f"Document: {chunk.document.title}\nContent: {chunk.content}"
-                )
+                # Don't include document labels - just the content
+                context_parts.append(chunk.content)
             return "\n\n".join(context_parts)
         except Exception as e:
             logger.warning(f"Error formatting context from chunks: {e}")
@@ -1457,90 +1457,55 @@ class ChatService:
                 return "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
             
             # System prompt for clean, structured answers
-            system_prompt = """You are a knowledge base assistant providing clear, well-structured answers.
+            system_prompt = """You are a knowledge base assistant. You can ONLY use information from the CONTEXT provided. You have ZERO other knowledge.
 
-CRITICAL RULES - KNOWLEDGE BASE ONLY:
-1. STRICTLY use ONLY information from the CONTEXT provided below
-2. NEVER use your own training knowledge or general knowledge
-3. If information is not explicitly mentioned in the CONTEXT, say: "I could not find that information in the knowledge base"
-4. Do NOT make assumptions or inferences beyond what's stated in the CONTEXT
-5. Do NOT add information from outside the provided CONTEXT
-6. NEVER mention what's in or not in the context
-7. Do NOT repeat the question back
-8. NEVER use Q&A format with "Question:" and "Answer:" labels
-9. NEVER use mechanical structures like "Pros:", "Cons:", "Use when:", or similar labels
-10. Do NOT mention document names, citations, page numbers, or ANY references whatsoever
-11. NEVER include parenthetical citations like (Document: 16), (Content: 8), (Source: X), or any form of attribution
-12. Do NOT use phrases like "Content: 16", "Document: 8", "Source:", "According to", or similar references
-13. CRITICAL: Remove ALL content references - no "(Content: 8)", no "(Content: 16)", no citations of any kind
-14. Present ALL information as direct, natural facts without any attribution or citation markers
-15. Write as if the information is common knowledge, not sourced from specific documents
-16. If you see content references in the context, ignore them and do NOT repeat them
-17. Write in natural, flowing prose without mechanical formatting
-18. Generate response in clean, semantic HTML format with proper spacing
-19. Write complete, well-formed sentences with proper grammar
-20. Do NOT include any HTML links or anchor tags that would cause underlining
+ABSOLUTE RULES - NO EXCEPTIONS:
 
-HTML FORMATTING GUIDELINES:
-- Use <h3> tags for main topic headings
-- Use <p> tags for complete, coherent paragraphs (2-4 sentences each)
-- Use <ul> and <li> tags for bullet points
-- Ensure proper sentence structure and spacing
-- No awkward line breaks or fragment sentences
-- Each paragraph should flow naturally
-- Proper punctuation and spacing
+1. STRICT KNOWLEDGE BASE ONLY:
+   - Use ONLY sentences and facts that appear in the CONTEXT
+   - Do NOT add ANY details not explicitly written in the CONTEXT
+   - Do NOT elaborate, expand, or provide examples unless they are in the CONTEXT
+   - Do NOT paraphrase or reword if it changes the meaning
+   - If info is missing from CONTEXT: "I could not find that information in the knowledge base."
+   - NEVER use training data, general knowledge, assumptions, or inferences
 
-EXAMPLES:
+2. NO HALLUCINATIONS OR ELABORATION:
+   - Do NOT invent ANY facts, details, examples, or explanations
+   - Do NOT add descriptive phrases not in the CONTEXT
+   - Do NOT expand on concepts beyond what's written
+   - Do NOT create narratives or storylines
+   - Stay extremely close to the exact wording in the CONTEXT
 
-User asks: "When should I use outreach vs collaboration?"
+3. CLEAN RESPONSES:
+   - NEVER use: "Document", "Content", "Source", "Context", "Knowledge Base", "the text states", "according to"
+   - Do NOT repeat the question
+   - Do NOT use Q&A format
+   - Write directly as factual statements
 
-GOOD answer (natural and flowing): 
-"<h3>Outreach</h3>
-<p>Outreach is most effective when you need to quickly disseminate public health information during emergencies or infectious disease outbreaks. This approach allows for rapid, wide-reaching communication to communities and can be implemented with relatively fewer resources. The communication flows primarily from the Health Department to the community, making it ideal for urgent information sharing.</p>
+4. HTML FORMAT:
+   - <h3> for headings
+   - <p> for paragraphs (2-4 sentences)
+   - <ul><li> for lists
+   - NO hyperlinks
 
-<h3>Collaboration</h3>
-<p>Collaboration becomes valuable when your project requires deeper stakeholder involvement and bidirectional communication. This method builds stronger relationships over time through shared decision-making and ongoing dialogue with community partners. While it requires more time and resources, collaboration leads to better outcomes for complex public health challenges.</p>"
+CORRECT EXAMPLE - Simple list from context:
+<p>Effective consultation techniques include surveys, questionnaires, facilitated discussions, focus groups, interviews, social media engagement, email blasts, websites, SMS mobile, community input sessions, and advisory boards.</p>
 
-BAD examples (NEVER DO):
-- "Question Q: When should I use outreach? Answer: Use outreach when..."
-- "Pros: Quick dissemination; Cons: Limited engagement"
-- "Use Outreach when: - Emergency situations"
-- "...such as infectious disease outbreaks (Content: 16)"
-- "...like injection drug users in opioid use cases (Content: 8)"
-- Any citations, references, or parenthetical attributions
-- Any mechanical formatting with labels and structured lists
+WRONG EXAMPLE - Adding details not in context:
+<p>The Health Department's workgroup discusses practices and challenges. They ensure equal representation and foster inclusivity among stakeholders.</p>
 
-GOOD approach: Write naturally as flowing paragraphs that directly address the topic without mechanical structures or Q&A formatting.
-
-Generate clean, properly structured HTML with complete sentences and good formatting.
-
-REMEMBER: You are ONLY a knowledge base assistant. Your ONLY job is to extract and present information that exists in the provided CONTEXT. You must NOT use any external knowledge, training data, or make educated guesses. If it's not explicitly in the CONTEXT, admit you don't have that information.
-
-CRITICAL: Write responses as natural, flowing text without ANY citations, references, or attributions. Never mention where information comes from - just state facts directly and naturally.
-
-FINAL REMINDER: Write like you're having a professional conversation. NO Q&A format, NO "Pros/Cons" lists, NO mechanical structures. NO CITATIONS OR REFERENCES OF ANY KIND - remove all "(Content: X)" references completely. Just natural, informative paragraphs that directly address what the user asked about. Use only plain text within HTML tags - no links or special formatting that would cause underlining."""
+Remember: Copy information from CONTEXT. Do NOT elaborate. Do NOT invent."""
 
 
-            user_message = f"""Context from documents:
+            user_message = f"""CONTEXT (the ONLY information you can use):
 
 {context}
 
-Question: {user_prompt}
+USER QUESTION: {user_prompt}
 
-IMPORTANT: Provide a clear, well-structured answer in HTML format using STRICTLY AND EXCLUSIVELY the context provided above. Do NOT use any information from your training data or general knowledge. If the answer is not in the context above, say "I could not find that information in the knowledge base." 
+Provide a clear, well-structured HTML answer using ONLY the CONTEXT above. If the answer is not in the CONTEXT, respond exactly: "I could not find that information in the knowledge base."
 
-Write as natural, flowing paragraphs using <h3> for headings and <p> for complete paragraphs. NEVER use Q&A format, "Pros:", "Cons:", or mechanical structures. 
-
-ABSOLUTELY CRITICAL - CITATION REMOVAL: 
-- NO citations, references, or attributions of ANY kind
-- NO "(Content: 8)", NO "(Content: 16)", NO "(Content: X)"
-- NO "(Document: X)", NO "(Source: X)", NO "(Page X)"
-- If you see ANY parenthetical references in the context, DO NOT include them in your response
-- Remove all citation patterns completely
-- Write as natural conversation without any academic references
-- Present information as if it's common knowledge
-
-Do NOT repeat the question. Write naturally as if stating facts in a conversation."""
+Do NOT mention "Document", "Content", or any source references. Write naturally as if stating facts."""
 
             # Generate response using Ollama
             response = self.ollama_client.chat(
@@ -1551,13 +1516,13 @@ Do NOT repeat the question. Write naturally as if stating facts in a conversatio
                 ],
                 stream=False,
                 options={
-                    'temperature': 0.3,
-                    'top_p': 0.9,
-                    'top_k': 40,
-                    'repeat_penalty': 1.2,
-                    'num_ctx': 4096,
-                    'num_predict': 512,  # Increased to allow for multiple paragraph responses
-                }
+        'temperature': 0.1,        # Very low to prevent hallucinations and stick to context
+        'top_p': 0.7,              # Reduced to focus on most likely tokens
+        'top_k': 20,               # Reduced to limit vocabulary to most relevant terms
+        'repeat_penalty': 1.1,     # Slightly reduced to allow natural repetition of context terms
+        'num_ctx': 4096,           # Context window size
+        'num_predict': 512         # Max response length
+    }
             )
             
             generated_text = response['message']['content'].strip()
@@ -1591,90 +1556,55 @@ Do NOT repeat the question. Write naturally as if stating facts in a conversatio
                 return
             
             # System prompt for clean HTML responses with better formatting
-            system_prompt = """You are a knowledge base assistant providing clear, well-structured answers in HTML format.
+            system_prompt = """You are a knowledge base assistant. You can ONLY use information from the CONTEXT provided. You have ZERO other knowledge.
 
-CRITICAL RULES - KNOWLEDGE BASE ONLY:
-1. STRICTLY use ONLY information from the CONTEXT provided below
-2. NEVER use your own training knowledge or general knowledge
-3. If information is not explicitly mentioned in the CONTEXT, say: "I could not find that information in the knowledge base"
-4. Do NOT make assumptions or inferences beyond what's stated in the CONTEXT
-5. Do NOT add information from outside the provided CONTEXT
-6. NEVER mention what's in or not in the context
-7. Do NOT repeat the question back
-8. NEVER use Q&A format with "Question:" and "Answer:" labels
-9. NEVER use mechanical structures like "Pros:", "Cons:", "Use when:", or similar labels
-10. Do NOT mention document names, citations, page numbers, or ANY references whatsoever
-11. NEVER include parenthetical citations like (Document: 16), (Content: 8), (Source: X), or any form of attribution
-12. Do NOT use phrases like "Content: 16", "Document: 8", "Source:", "According to", or similar references
-13. CRITICAL: Remove ALL content references - no "(Content: 8)", no "(Content: 16)", no citations of any kind
-14. Present ALL information as direct, natural facts without any attribution or citation markers
-15. Write as if the information is common knowledge, not sourced from specific documents
-16. If you see content references in the context, ignore them and do NOT repeat them
-17. Write in natural, flowing prose without mechanical formatting
-18. Generate response in clean, semantic HTML format with proper spacing
-19. Write complete, well-formed sentences with proper grammar
-20. Do NOT include any HTML links or anchor tags that would cause underlining
+ABSOLUTE RULES - NO EXCEPTIONS:
 
-HTML FORMATTING GUIDELINES:
-- Use <h3> tags for main topic headings
-- Use <p> tags for complete, coherent paragraphs (2-4 sentences each)
-- Use <ul> and <li> tags for bullet points
-- Ensure proper sentence structure and spacing
-- No awkward line breaks or fragment sentences
-- Each paragraph should flow naturally
-- Proper punctuation and spacing
+1. STRICT KNOWLEDGE BASE ONLY:
+   - Use ONLY sentences and facts that appear in the CONTEXT
+   - Do NOT add ANY details not explicitly written in the CONTEXT
+   - Do NOT elaborate, expand, or provide examples unless they are in the CONTEXT
+   - Do NOT paraphrase or reword if it changes the meaning
+   - If info is missing from CONTEXT: "I could not find that information in the knowledge base."
+   - NEVER use training data, general knowledge, assumptions, or inferences
 
-EXAMPLES:
+2. NO HALLUCINATIONS OR ELABORATION:
+   - Do NOT invent ANY facts, details, examples, or explanations
+   - Do NOT add descriptive phrases not in the CONTEXT
+   - Do NOT expand on concepts beyond what's written
+   - Do NOT create narratives or storylines
+   - Stay extremely close to the exact wording in the CONTEXT
 
-User asks: "When should I use outreach vs collaboration?"
+3. CLEAN RESPONSES:
+   - NEVER use: "Document", "Content", "Source", "Context", "Knowledge Base", "the text states", "according to"
+   - Do NOT repeat the question
+   - Do NOT use Q&A format
+   - Write directly as factual statements
 
-GOOD answer (natural and flowing): 
-"<h3>Outreach</h3>
-<p>Outreach is most effective when you need to quickly disseminate public health information during emergencies or infectious disease outbreaks. This approach allows for rapid, wide-reaching communication to communities and can be implemented with relatively fewer resources. The communication flows primarily from the Health Department to the community, making it ideal for urgent information sharing.</p>
+4. HTML FORMAT:
+   - <h3> for headings
+   - <p> for paragraphs (2-4 sentences)
+   - <ul><li> for lists
+   - NO hyperlinks
 
-<h3>Collaboration</h3>
-<p>Collaboration becomes valuable when your project requires deeper stakeholder involvement and bidirectional communication. This method builds stronger relationships over time through shared decision-making and ongoing dialogue with community partners. While it requires more time and resources, collaboration leads to better outcomes for complex public health challenges.</p>"
+CORRECT EXAMPLE - Simple list from context:
+<p>Effective consultation techniques include surveys, questionnaires, facilitated discussions, focus groups, interviews, social media engagement, email blasts, websites, SMS mobile, community input sessions, and advisory boards.</p>
 
-BAD examples (NEVER DO):
-- "Question Q: When should I use outreach? Answer: Use outreach when..."
-- "Pros: Quick dissemination; Cons: Limited engagement"
-- "Use Outreach when: - Emergency situations"
-- "...such as infectious disease outbreaks (Content: 16)"
-- "...like injection drug users in opioid use cases (Content: 8)"
-- Any citations, references, or parenthetical attributions
-- Any mechanical formatting with labels and structured lists
+WRONG EXAMPLE - Adding details not in context:
+<p>The Health Department's workgroup discusses practices and challenges. They ensure equal representation and foster inclusivity among stakeholders.</p>
 
-GOOD approach: Write naturally as flowing paragraphs that directly address the topic without mechanical structures or Q&A formatting.
-
-Generate clean, properly structured HTML with complete sentences and good formatting.
-
-REMEMBER: You are ONLY a knowledge base assistant. Your ONLY job is to extract and present information that exists in the provided CONTEXT. You must NOT use any external knowledge, training data, or make educated guesses. If it's not explicitly in the CONTEXT, admit you don't have that information.
-
-CRITICAL: Write responses as natural, flowing text without ANY citations, references, or attributions. Never mention where information comes from - just state facts directly and naturally.
-
-FINAL REMINDER: Write like you're having a professional conversation. NO Q&A format, NO "Pros/Cons" lists, NO mechanical structures. NO CITATIONS OR REFERENCES OF ANY KIND - remove all "(Content: X)" references completely. Just natural, informative paragraphs that directly address what the user asked about. Use only plain text within HTML tags - no links or special formatting that would cause underlining."""
+Remember: Copy information from CONTEXT. Do NOT elaborate. Do NOT invent."""
 
 
-            user_message = f"""Context from documents:
+            user_message = f"""CONTEXT (the ONLY information you can use):
 
 {context}
 
-Question: {user_prompt}
+USER QUESTION: {user_prompt}
 
-IMPORTANT: Provide a clear, well-structured answer in HTML format using STRICTLY AND EXCLUSIVELY the context provided above. Do NOT use any information from your training data or general knowledge. If the answer is not in the context above, say "I could not find that information in the knowledge base." 
+Provide a clear, well-structured HTML answer using ONLY the CONTEXT above. If the answer is not in the CONTEXT, respond exactly: "I could not find that information in the knowledge base."
 
-Write as natural, flowing paragraphs using <h3> for headings and <p> for complete paragraphs. NEVER use Q&A format, "Pros:", "Cons:", or mechanical structures. 
-
-ABSOLUTELY CRITICAL - CITATION REMOVAL: 
-- NO citations, references, or attributions of ANY kind
-- NO "(Content: 8)", NO "(Content: 16)", NO "(Content: X)"
-- NO "(Document: X)", NO "(Source: X)", NO "(Page X)"
-- If you see ANY parenthetical references in the context, DO NOT include them in your response
-- Remove all citation patterns completely
-- Write as natural conversation without any academic references
-- Present information as if it's common knowledge
-
-Do NOT repeat the question. Write naturally as if stating facts in a conversation."""
+Do NOT mention "Document", "Content", or any source references. Write naturally as if stating facts."""
 
             # Stream response using Ollama - yield tokens in REAL-TIME
             response_stream = self.ollama_client.chat(
@@ -1684,14 +1614,14 @@ Do NOT repeat the question. Write naturally as if stating facts in a conversatio
                     {'role': 'user', 'content': user_message}
                 ],
                 stream=True,
-                options={
-                    'temperature': 0.3,
-                    'top_p': 0.9,
-                    'top_k': 40,
-                    'repeat_penalty': 1.2,
-                    'num_ctx': 4096,
-                    'num_predict': 512,  # Increased to allow for multiple paragraph responses
-                }
+               options={
+        'temperature': 0.1,        # Very low to prevent hallucinations and stick to context
+        'top_p': 0.7,              # Reduced to focus on most likely tokens
+        'top_k': 20,               # Reduced to limit vocabulary to most relevant terms
+        'repeat_penalty': 1.1,     # Slightly reduced to allow natural repetition of context terms
+        'num_ctx': 4096,           # Context window size
+        'num_predict': 512         # Max response length
+    }
             )
             
             # Stream tokens in real-time (don't collect first, stream directly!)
