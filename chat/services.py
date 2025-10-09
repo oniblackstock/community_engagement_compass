@@ -625,7 +625,7 @@
 #                 ],
 #                 stream=False,
 #                 options={
-#                     'temperature': 0.1,
+#                     'temperature': 0.3,
 #                     'top_p': 0.9,
 #                     'repeat_penalty': 1.2,
 #                     'num_ctx': 4096,
@@ -744,7 +744,7 @@
 #                 ],
 #                 stream=True,
 #                 options={
-#                     'temperature': 0.1,
+#                     'temperature': 0.3,
 #                     'top_p': 0.9,
 #                     'repeat_penalty': 1.2,
 #                     'num_ctx': 4096,
@@ -1116,6 +1116,151 @@ class EmbeddingService:
             logger.error(f"Error searching similar chunks: {str(e)}", exc_info=True)
             return []
 
+    def search_similar_chunks_enhanced(self, query_text, top_k=40, similarity_threshold=0.3):
+        """Enhanced search with query expansion for comparative queries and better results"""
+        try:
+            if not os.path.exists(self.index_path) or not os.path.exists(self.mapping_path):
+                logger.warning("FAISS index not found - no documents have been processed yet")
+                return []
+
+            # Load index and mapping
+            index = faiss.read_index(self.index_path)
+            with open(self.mapping_path, 'rb') as f:
+                chunk_mapping = pickle.load(f)
+
+            if not chunk_mapping:
+                logger.warning("No chunks in mapping - index may be empty")
+                return []
+
+            # Detect if this is a comparative query (contains "vs", "versus", "compared to", etc.)
+            comparative_patterns = ['vs', 'versus', 'compared to', 'difference between', 'vs.', 'compare']
+            is_comparative = any(pattern in query_text.lower() for pattern in comparative_patterns)
+            
+            all_chunks = []
+            
+            if is_comparative:
+                logger.info(f"Detected comparative query: {query_text}")
+                
+                # Extract the concepts being compared
+                query_lower = query_text.lower()
+                
+                # Split on common comparison patterns
+                concepts = []
+                for pattern in ['vs', 'versus', 'vs.']:
+                    if pattern in query_lower:
+                        parts = query_lower.split(pattern)
+                        if len(parts) >= 2:
+                            concepts = [part.strip() for part in parts[:2]]
+                            break
+                
+                # If no clear split, try "difference between X and Y"
+                if not concepts and 'difference between' in query_lower:
+                    parts = query_lower.replace('difference between', '').split(' and ')
+                    if len(parts) >= 2:
+                        concepts = [part.strip() for part in parts[:2]]
+                
+                # Search for each concept separately and combine results
+                if concepts:
+                    logger.info(f"Searching for concepts: {concepts}")
+                    
+                    for concept in concepts:
+                        if concept.strip():
+                            concept_results = self._search_single_concept(
+                                concept.strip(), 
+                                index, 
+                                chunk_mapping, 
+                                top_k//2,  # Split the results between concepts
+                                similarity_threshold * 0.8  # Lower threshold for individual concepts
+                            )
+                            all_chunks.extend(concept_results)
+                    
+                    # Also search the full query
+                    full_query_results = self._search_single_concept(
+                        query_text, 
+                        index, 
+                        chunk_mapping, 
+                        top_k//3, 
+                        similarity_threshold
+                    )
+                    all_chunks.extend(full_query_results)
+                else:
+                    # Fallback to normal search if concept extraction fails
+                    all_chunks = self._search_single_concept(
+                        query_text, 
+                        index, 
+                        chunk_mapping, 
+                        top_k, 
+                        similarity_threshold
+                    )
+            else:
+                # Normal single concept search
+                all_chunks = self._search_single_concept(
+                    query_text, 
+                    index, 
+                    chunk_mapping, 
+                    top_k, 
+                    similarity_threshold
+                )
+            
+            # Remove duplicates and sort by similarity
+            seen_chunk_ids = set()
+            unique_chunks = []
+            for chunk_data in all_chunks:
+                chunk_id = chunk_data['chunk'].id
+                if chunk_id not in seen_chunk_ids:
+                    seen_chunk_ids.add(chunk_id)
+                    unique_chunks.append(chunk_data)
+            
+            # Sort by similarity score (descending)
+            unique_chunks.sort(key=lambda x: x['similarity'], reverse=True)
+            
+            # Return top results
+            result_chunks = unique_chunks[:top_k]
+            logger.info(f"Enhanced search found {len(result_chunks)} unique chunks for query: {query_text}")
+            return result_chunks
+
+        except Exception as e:
+            logger.error(f"Error in enhanced search: {str(e)}", exc_info=True)
+            # Fallback to regular search
+            return self.search_similar_chunks(query_text, top_k, similarity_threshold)
+    
+    def _search_single_concept(self, concept_text, index, chunk_mapping, top_k, similarity_threshold):
+        """Helper method to search for a single concept"""
+        try:
+            # Create query embedding
+            query_embedding = self.create_embedding(concept_text)
+            query_vector = np.array([query_embedding]).astype('float32')
+            faiss.normalize_L2(query_vector)
+
+            # Search with more results to filter by threshold
+            search_k = min(top_k * 3, len(chunk_mapping))
+            scores, indices = index.search(query_vector, search_k)
+
+            # Get corresponding chunks with filtering
+            similar_chunks = []
+            for i, (score, idx) in enumerate(zip(scores[0], indices[0])):
+                if idx < len(chunk_mapping) and score > similarity_threshold:
+                    chunk_id = chunk_mapping[idx]
+                    try:
+                        chunk = DocumentChunk.objects.get(id=chunk_id)
+                        similar_chunks.append({
+                            'chunk': chunk,
+                            'similarity': float(score)
+                        })
+                    except DocumentChunk.DoesNotExist:
+                        logger.warning(f"Chunk {chunk_id} not found in database")
+                        continue
+                
+                # Stop if we have enough results
+                if len(similar_chunks) >= top_k:
+                    break
+
+            return similar_chunks
+            
+        except Exception as e:
+            logger.error(f"Error searching single concept '{concept_text}': {str(e)}")
+            return []
+
 
 def post_process_response(text: str) -> str:
     """
@@ -1314,43 +1459,66 @@ class ChatService:
             # System prompt for clean, structured answers
             system_prompt = """You are a knowledge base assistant providing clear, well-structured answers.
 
-CRITICAL RULES:
-1. ONLY use information from the CONTEXT provided
-2. If information is not in CONTEXT, say: "I could not find that information in the knowledge base"
-3. NEVER mention what's in or not in the context
-4. Do NOT repeat the question back
-5. Do NOT mention document names or citations
-6. NEVER use colons (:) anywhere in the response
-7. NEVER use "Pros:" or "Cons:" labels
-8. Use clean headings and simple bullet points only
+CRITICAL RULES - KNOWLEDGE BASE ONLY:
+1. STRICTLY use ONLY information from the CONTEXT provided below
+2. NEVER use your own training knowledge or general knowledge
+3. If information is not explicitly mentioned in the CONTEXT, say: "I could not find that information in the knowledge base"
+4. Do NOT make assumptions or inferences beyond what's stated in the CONTEXT
+5. Do NOT add information from outside the provided CONTEXT
+6. NEVER mention what's in or not in the context
+7. Do NOT repeat the question back
+8. NEVER use Q&A format with "Question:" and "Answer:" labels
+9. NEVER use mechanical structures like "Pros:", "Cons:", "Use when:", or similar labels
+10. Do NOT mention document names, citations, page numbers, or ANY references whatsoever
+11. NEVER include parenthetical citations like (Document: 16), (Content: 8), (Source: X), or any form of attribution
+12. Do NOT use phrases like "Content: 16", "Document: 8", "Source:", "According to", or similar references
+13. CRITICAL: Remove ALL content references - no "(Content: 8)", no "(Content: 16)", no citations of any kind
+14. Present ALL information as direct, natural facts without any attribution or citation markers
+15. Write as if the information is common knowledge, not sourced from specific documents
+16. If you see content references in the context, ignore them and do NOT repeat them
+17. Write in natural, flowing prose without mechanical formatting
+18. Generate response in clean, semantic HTML format with proper spacing
+19. Write complete, well-formed sentences with proper grammar
+20. Do NOT include any HTML links or anchor tags that would cause underlining
 
-FORMATTING GUIDELINES:
-- Start with a clear heading for each main topic
-- Follow with 1-2 explanatory sentences
-- Add 1-2 bullet points for key characteristics
-- Use proper line breaks between sections
-- NO colons anywhere in the response
-- NO "Pros:" or "Cons:" labels
-- Clean, simple formatting
+HTML FORMATTING GUIDELINES:
+- Use <h3> tags for main topic headings
+- Use <p> tags for complete, coherent paragraphs (2-4 sentences each)
+- Use <ul> and <li> tags for bullet points
+- Ensure proper sentence structure and spacing
+- No awkward line breaks or fragment sentences
+- Each paragraph should flow naturally
+- Proper punctuation and spacing
 
 EXAMPLES:
 
-User asks: "What's the difference between consultation and collaboration?"
-Good answer: "Consultation
+User asks: "When should I use outreach vs collaboration?"
 
-Consultation is an information-seeking practice where the Health Department shares proposals with communities and solicits their feedback, which then influences agency decisions. The Health Department still makes final decisions but considers community input.
+GOOD answer (natural and flowing): 
+"<h3>Outreach</h3>
+<p>Outreach is most effective when you need to quickly disseminate public health information during emergencies or infectious disease outbreaks. This approach allows for rapid, wide-reaching communication to communities and can be implemented with relatively fewer resources. The communication flows primarily from the Health Department to the community, making it ideal for urgent information sharing.</p>
 
-• Communication flows to the community and back
-• Health Department retains decision-making authority
+<h3>Collaboration</h3>
+<p>Collaboration becomes valuable when your project requires deeper stakeholder involvement and bidirectional communication. This method builds stronger relationships over time through shared decision-making and ongoing dialogue with community partners. While it requires more time and resources, collaboration leads to better outcomes for complex public health challenges.</p>"
 
-Collaboration
+BAD examples (NEVER DO):
+- "Question Q: When should I use outreach? Answer: Use outreach when..."
+- "Pros: Quick dissemination; Cons: Limited engagement"
+- "Use Outreach when: - Emergency situations"
+- "...such as infectious disease outbreaks (Content: 16)"
+- "...like injection drug users in opioid use cases (Content: 8)"
+- Any citations, references, or parenthetical attributions
+- Any mechanical formatting with labels and structured lists
 
-Collaboration involves developing deeper relationships built on trust with stakeholders and partners working toward a common goal. Decisions are made through consensus between the Health Department and external partners.
+GOOD approach: Write naturally as flowing paragraphs that directly address the topic without mechanical structures or Q&A formatting.
 
-• Bidirectional communication with ongoing dialogue
-• Shared decision-making through consensus
+Generate clean, properly structured HTML with complete sentences and good formatting.
 
-Use clean headings, explanatory sentences, and simple bullet points. Never use colons or Pros/Cons labels."""
+REMEMBER: You are ONLY a knowledge base assistant. Your ONLY job is to extract and present information that exists in the provided CONTEXT. You must NOT use any external knowledge, training data, or make educated guesses. If it's not explicitly in the CONTEXT, admit you don't have that information.
+
+CRITICAL: Write responses as natural, flowing text without ANY citations, references, or attributions. Never mention where information comes from - just state facts directly and naturally.
+
+FINAL REMINDER: Write like you're having a professional conversation. NO Q&A format, NO "Pros/Cons" lists, NO mechanical structures. NO CITATIONS OR REFERENCES OF ANY KIND - remove all "(Content: X)" references completely. Just natural, informative paragraphs that directly address what the user asked about. Use only plain text within HTML tags - no links or special formatting that would cause underlining."""
 
 
             user_message = f"""Context from documents:
@@ -1359,7 +1527,20 @@ Use clean headings, explanatory sentences, and simple bullet points. Never use c
 
 Question: {user_prompt}
 
-Provide a clear, well-structured answer using ONLY the context above. Use headings and 1-2 bullet points per section. NEVER use colons anywhere. Do NOT mention document names. Do NOT repeat the question."""
+IMPORTANT: Provide a clear, well-structured answer in HTML format using STRICTLY AND EXCLUSIVELY the context provided above. Do NOT use any information from your training data or general knowledge. If the answer is not in the context above, say "I could not find that information in the knowledge base." 
+
+Write as natural, flowing paragraphs using <h3> for headings and <p> for complete paragraphs. NEVER use Q&A format, "Pros:", "Cons:", or mechanical structures. 
+
+ABSOLUTELY CRITICAL - CITATION REMOVAL: 
+- NO citations, references, or attributions of ANY kind
+- NO "(Content: 8)", NO "(Content: 16)", NO "(Content: X)"
+- NO "(Document: X)", NO "(Source: X)", NO "(Page X)"
+- If you see ANY parenthetical references in the context, DO NOT include them in your response
+- Remove all citation patterns completely
+- Write as natural conversation without any academic references
+- Present information as if it's common knowledge
+
+Do NOT repeat the question. Write naturally as if stating facts in a conversation."""
 
             # Generate response using Ollama
             response = self.ollama_client.chat(
@@ -1370,7 +1551,7 @@ Provide a clear, well-structured answer using ONLY the context above. Use headin
                 ],
                 stream=False,
                 options={
-                    'temperature': 0.1,
+                    'temperature': 0.3,
                     'top_p': 0.9,
                     'top_k': 40,
                     'repeat_penalty': 1.2,
@@ -1381,8 +1562,8 @@ Provide a clear, well-structured answer using ONLY the context above. Use headin
             
             generated_text = response['message']['content'].strip()
             
-            # POST-PROCESS the response to fix formatting
-            generated_text = post_process_response(generated_text)
+            # Skip post-processing since we're now using HTML format
+            # generated_text = post_process_response(generated_text)
             
             if not generated_text:
                 return "I'm here to help! How can I assist you today?"
@@ -1409,46 +1590,69 @@ Provide a clear, well-structured answer using ONLY the context above. Use headin
                 yield "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
                 return
             
-            # System prompt for clean, structured answers
-            system_prompt = """You are a knowledge base assistant providing clear, well-structured answers.
+            # System prompt for clean HTML responses with better formatting
+            system_prompt = """You are a knowledge base assistant providing clear, well-structured answers in HTML format.
 
-CRITICAL RULES:
-1. ONLY use information from the CONTEXT provided
-2. If information is not in CONTEXT, say: "I could not find that information in the knowledge base"
-3. NEVER mention what's in or not in the context
-4. Do NOT repeat the question back
-5. Do NOT mention document names or citations
-6. NEVER use colons (:) anywhere in the response
-7. NEVER use "Pros:" or "Cons:" labels
-8. Use clean headings and simple bullet points only
+CRITICAL RULES - KNOWLEDGE BASE ONLY:
+1. STRICTLY use ONLY information from the CONTEXT provided below
+2. NEVER use your own training knowledge or general knowledge
+3. If information is not explicitly mentioned in the CONTEXT, say: "I could not find that information in the knowledge base"
+4. Do NOT make assumptions or inferences beyond what's stated in the CONTEXT
+5. Do NOT add information from outside the provided CONTEXT
+6. NEVER mention what's in or not in the context
+7. Do NOT repeat the question back
+8. NEVER use Q&A format with "Question:" and "Answer:" labels
+9. NEVER use mechanical structures like "Pros:", "Cons:", "Use when:", or similar labels
+10. Do NOT mention document names, citations, page numbers, or ANY references whatsoever
+11. NEVER include parenthetical citations like (Document: 16), (Content: 8), (Source: X), or any form of attribution
+12. Do NOT use phrases like "Content: 16", "Document: 8", "Source:", "According to", or similar references
+13. CRITICAL: Remove ALL content references - no "(Content: 8)", no "(Content: 16)", no citations of any kind
+14. Present ALL information as direct, natural facts without any attribution or citation markers
+15. Write as if the information is common knowledge, not sourced from specific documents
+16. If you see content references in the context, ignore them and do NOT repeat them
+17. Write in natural, flowing prose without mechanical formatting
+18. Generate response in clean, semantic HTML format with proper spacing
+19. Write complete, well-formed sentences with proper grammar
+20. Do NOT include any HTML links or anchor tags that would cause underlining
 
-FORMATTING GUIDELINES:
-- Start with a clear heading for each main topic
-- Follow with 1-2 explanatory sentences
-- Add 1-2 bullet points for key characteristics
-- Use proper line breaks between sections
-- NO colons anywhere in the response
-- NO "Pros:" or "Cons:" labels
-- Clean, simple formatting
+HTML FORMATTING GUIDELINES:
+- Use <h3> tags for main topic headings
+- Use <p> tags for complete, coherent paragraphs (2-4 sentences each)
+- Use <ul> and <li> tags for bullet points
+- Ensure proper sentence structure and spacing
+- No awkward line breaks or fragment sentences
+- Each paragraph should flow naturally
+- Proper punctuation and spacing
 
 EXAMPLES:
 
-User asks: "What's the difference between consultation and collaboration?"
-Good answer: "Consultation
+User asks: "When should I use outreach vs collaboration?"
 
-Consultation is an information-seeking practice where the Health Department shares proposals with communities and solicits their feedback, which then influences agency decisions. The Health Department still makes final decisions but considers community input.
+GOOD answer (natural and flowing): 
+"<h3>Outreach</h3>
+<p>Outreach is most effective when you need to quickly disseminate public health information during emergencies or infectious disease outbreaks. This approach allows for rapid, wide-reaching communication to communities and can be implemented with relatively fewer resources. The communication flows primarily from the Health Department to the community, making it ideal for urgent information sharing.</p>
 
-• Communication flows to the community and back
-• Health Department retains decision-making authority
+<h3>Collaboration</h3>
+<p>Collaboration becomes valuable when your project requires deeper stakeholder involvement and bidirectional communication. This method builds stronger relationships over time through shared decision-making and ongoing dialogue with community partners. While it requires more time and resources, collaboration leads to better outcomes for complex public health challenges.</p>"
 
-Collaboration
+BAD examples (NEVER DO):
+- "Question Q: When should I use outreach? Answer: Use outreach when..."
+- "Pros: Quick dissemination; Cons: Limited engagement"
+- "Use Outreach when: - Emergency situations"
+- "...such as infectious disease outbreaks (Content: 16)"
+- "...like injection drug users in opioid use cases (Content: 8)"
+- Any citations, references, or parenthetical attributions
+- Any mechanical formatting with labels and structured lists
 
-Collaboration involves developing deeper relationships built on trust with stakeholders and partners working toward a common goal. Decisions are made through consensus between the Health Department and external partners.
+GOOD approach: Write naturally as flowing paragraphs that directly address the topic without mechanical structures or Q&A formatting.
 
-• Bidirectional communication with ongoing dialogue
-• Shared decision-making through consensus
+Generate clean, properly structured HTML with complete sentences and good formatting.
 
-Use clean headings, explanatory sentences, and simple bullet points. Never use colons or Pros/Cons labels."""
+REMEMBER: You are ONLY a knowledge base assistant. Your ONLY job is to extract and present information that exists in the provided CONTEXT. You must NOT use any external knowledge, training data, or make educated guesses. If it's not explicitly in the CONTEXT, admit you don't have that information.
+
+CRITICAL: Write responses as natural, flowing text without ANY citations, references, or attributions. Never mention where information comes from - just state facts directly and naturally.
+
+FINAL REMINDER: Write like you're having a professional conversation. NO Q&A format, NO "Pros/Cons" lists, NO mechanical structures. NO CITATIONS OR REFERENCES OF ANY KIND - remove all "(Content: X)" references completely. Just natural, informative paragraphs that directly address what the user asked about. Use only plain text within HTML tags - no links or special formatting that would cause underlining."""
 
 
             user_message = f"""Context from documents:
@@ -1457,7 +1661,20 @@ Use clean headings, explanatory sentences, and simple bullet points. Never use c
 
 Question: {user_prompt}
 
-Provide a clear, well-structured answer using ONLY the context above. Use headings and 1-2 bullet points per section. NEVER use colons anywhere. Do NOT mention document names. Do NOT repeat the question."""
+IMPORTANT: Provide a clear, well-structured answer in HTML format using STRICTLY AND EXCLUSIVELY the context provided above. Do NOT use any information from your training data or general knowledge. If the answer is not in the context above, say "I could not find that information in the knowledge base." 
+
+Write as natural, flowing paragraphs using <h3> for headings and <p> for complete paragraphs. NEVER use Q&A format, "Pros:", "Cons:", or mechanical structures. 
+
+ABSOLUTELY CRITICAL - CITATION REMOVAL: 
+- NO citations, references, or attributions of ANY kind
+- NO "(Content: 8)", NO "(Content: 16)", NO "(Content: X)"
+- NO "(Document: X)", NO "(Source: X)", NO "(Page X)"
+- If you see ANY parenthetical references in the context, DO NOT include them in your response
+- Remove all citation patterns completely
+- Write as natural conversation without any academic references
+- Present information as if it's common knowledge
+
+Do NOT repeat the question. Write naturally as if stating facts in a conversation."""
 
             # Stream response using Ollama - yield tokens in REAL-TIME
             response_stream = self.ollama_client.chat(
@@ -1468,7 +1685,7 @@ Provide a clear, well-structured answer using ONLY the context above. Use headin
                 ],
                 stream=True,
                 options={
-                    'temperature': 0.1,
+                    'temperature': 0.3,
                     'top_p': 0.9,
                     'top_k': 40,
                     'repeat_penalty': 1.2,

@@ -200,16 +200,28 @@ def send_message(request):
         # Get conversation history
         messages = list(session.messages.select_related('session').all())
         
-        # Get relevant document chunks using RAG
+        # Get relevant document chunks using RAG with improved search
         similar_chunks = []
         try:
-            similar_chunks = embedding_service.search_similar_chunks(
+            # Use expanded search for better results, especially for comparative queries
+            similar_chunks = embedding_service.search_similar_chunks_enhanced(
                 message_content, 
-                top_k=3
+                top_k=10,  # Increased from 3 to get more relevant content
+                similarity_threshold=0.3  # Lowered from 0.4 for broader results
             )
             logger.info(f"Found {len(similar_chunks)} similar chunks for query")
         except Exception as e:
             logger.warning(f"Error in similarity search: {str(e)}")
+            # Fallback to original method if enhanced search fails
+            try:
+                similar_chunks = embedding_service.search_similar_chunks(
+                    message_content, 
+                    top_k=10,
+                    similarity_threshold=0.3
+                )
+                logger.info(f"Fallback search found {len(similar_chunks)} similar chunks")
+            except Exception as fallback_e:
+                logger.warning(f"Fallback search also failed: {str(fallback_e)}")
         
         if streaming:
             return send_message_stream(request, session, messages, similar_chunks)
@@ -287,15 +299,13 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                     # Send token as Server-Sent Event for real-time display
                     yield f"data: {json.dumps({'token': token, 'type': 'token'})}\n\n"
             
-            # Apply post-processing to the complete response for proper formatting
+            # Save the HTML response directly (no post-processing needed)
             if full_response.strip():
-                cleaned_response = post_process_response(full_response)
-                
-                # Save the cleaned response to database
+                # Save the HTML response to database
                 assistant_message = ChatMessage.objects.create(
                     session=session,
                     message_type='assistant',
-                    content=cleaned_response  # Save cleaned markdown
+                    content=full_response  # Save HTML response directly
                 )
                 
                 # Invalidate cache after saving message
@@ -332,13 +342,13 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                 else:
                     sources_data = []
             
-            # Send completion signal with cleaned content for final rendering
+            # Send completion signal with HTML content for final rendering
             yield f"data: {json.dumps({
                 'type': 'complete', 
                 'session_name': session.session_name, 
                 'session_id': str(session.id),
                 'sources': sources_data,
-                'final_content': cleaned_response if full_response.strip() else ''
+                'final_content': full_response if full_response.strip() else ''
             })}\n\n"
             
         except Exception as e:
