@@ -1368,7 +1368,7 @@ class ChatService:
             
         # Use Ollama for optimized model management
         self.ollama_client = ollama.Client()
-        self.model_name = "phi4-mini:latest"
+        self.model_name = "llama3:8b"
         
         # Test Ollama connection
         try:
@@ -1405,7 +1405,7 @@ class ChatService:
             logger.error(f"Error testing Ollama model: {str(e)}")
             raise
 
-    def get_relevant_context(self, query: str, top_k: int = 5) -> str:
+    def get_relevant_context(self, query: str, top_k: int = 50) -> str:
         """Retrieve relevant context from documents using RAG"""
         try:
             similar_chunks = self.embedding_service.search_similar_chunks(query, top_k=top_k)
@@ -1457,44 +1457,48 @@ class ChatService:
                 return "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
             
             # System prompt for clean, structured answers
-            system_prompt = """You are a knowledge base assistant. You can ONLY use information from the CONTEXT provided. You have ZERO other knowledge.
+            system_prompt = """You are a knowledge base assistant. You must only use information provided in the CONTEXT. You have no other knowledge and must not guess, assume, or elaborate beyond the text.
 
-ABSOLUTE RULES - NO EXCEPTIONS:
+ABSOLUTE RULES — NO EXCEPTIONS:
 
-1. STRICT KNOWLEDGE BASE ONLY:
-   - Use ONLY sentences and facts that appear in the CONTEXT
-   - Do NOT add ANY details not explicitly written in the CONTEXT
-   - Do NOT elaborate, expand, or provide examples unless they are in the CONTEXT
-   - Do NOT paraphrase or reword if it changes the meaning
-   - If info is missing from CONTEXT: "I could not find that information in the knowledge base."
-   - NEVER use training data, general knowledge, assumptions, or inferences
+1. CONTEXT ONLY:
+- Use only what is explicitly written in the CONTEXT.
+- Extract and synthesize ALL relevant information from the context.
+- If you find information about some aspects of a question, provide that information.
+- Only say "I could not find that information in the knowledge base" if NO relevant information exists in the context.
 
-2. NO HALLUCINATIONS OR ELABORATION:
-   - Do NOT invent ANY facts, details, examples, or explanations
-   - Do NOT add descriptive phrases not in the CONTEXT
-   - Do NOT expand on concepts beyond what's written
-   - Do NOT create narratives or storylines
-   - Stay extremely close to the exact wording in the CONTEXT
+2. DO NOT:
+- Do not invent, guess, or expand on ideas not in the CONTEXT.
+- Do not add descriptions, explanations, or summaries not present in the CONTEXT.
+- Do not reference sections, documents, sources, or say "the context says."
+- Do not repeat or rephrase the user's question.
+- Do not use Q&A format unless the content supports it.
+- Do not add disclaimers or caveats like "I could not find information about X" if you already provided relevant information.
 
-3. CLEAN RESPONSES:
-   - NEVER use: "Document", "Content", "Source", "Context", "Knowledge Base", "the text states", "according to"
-   - Do NOT repeat the question
-   - Do NOT use Q&A format
-   - Write directly as factual statements
+3. HTML FORMAT ONLY:
+- Use <h3> for main topic headings.
+- Use <p> for full paragraphs (2–4 complete sentences).
+- Use <ul> and <li> for lists when the content clearly supports list format.
+- Do not include hyperlinks or anchor tags.
 
-4. HTML FORMAT:
-   - <h3> for headings
-   - <p> for paragraphs (2-4 sentences)
-   - <ul><li> for lists
-   - NO hyperlinks
+4. COMPREHENSIVE ANSWERS:
+- Search the entire context thoroughly before responding.
+- If the question has multiple parts, address all parts found in the context.
+- Present information in a logical, organized structure.
 
-CORRECT EXAMPLE - Simple list from context:
+5. STYLE AND TONE:
+- Write in clean, natural language as if explaining professionally.
+- No thinking-out-loud, no reasoning steps, no filler phrases like "Let me check," "Okay," or "Looking at the context."
+- Be confident in presenting what you find; don't hedge with phrases like "the document mentions."
+
+EXAMPLE OF CORRECT RESPONSE:
+<h3>Effective Consultation Techniques</h3>
 <p>Effective consultation techniques include surveys, questionnaires, facilitated discussions, focus groups, interviews, social media engagement, email blasts, websites, SMS mobile, community input sessions, and advisory boards.</p>
 
-WRONG EXAMPLE - Adding details not in context:
-<p>The Health Department's workgroup discusses practices and challenges. They ensure equal representation and foster inclusivity among stakeholders.</p>
+EXAMPLE OF WRONG RESPONSE:
+<p>Looking at the context, it seems that capacity building is implied. Okay, so the user is asking about capacity. Let's explore the context further.</p>
 
-Remember: Copy information from CONTEXT. Do NOT elaborate. Do NOT invent."""
+"""
 
 
             user_message = f"""CONTEXT (the ONLY information you can use):
@@ -1516,12 +1520,12 @@ Do NOT mention "Document", "Content", or any source references. Write naturally 
                 ],
                 stream=False,
                 options={
-        'temperature': 0.1,        # Very low to prevent hallucinations and stick to context
-        'top_p': 0.7,              # Reduced to focus on most likely tokens
-        'top_k': 20,               # Reduced to limit vocabulary to most relevant terms
-        'repeat_penalty': 1.1,     # Slightly reduced to allow natural repetition of context terms
-        'num_ctx': 4096,           # Context window size
-        'num_predict': 512         # Max response length
+        'temperature': 0.2,        # Slightly higher to allow better synthesis while staying grounded
+        'top_p': 0.9,              # Allow more token diversity for better synthesis
+        'top_k': 60,               # Slightly more vocabulary options
+        'repeat_penalty': 1.15,    # Encourage variety in expression
+        'num_ctx': 8192,           # Larger context window to fit more chunks
+        'num_predict': 768         # Allow longer, more complete responses
     }
             )
             
@@ -1556,44 +1560,48 @@ Do NOT mention "Document", "Content", or any source references. Write naturally 
                 return
             
             # System prompt for clean HTML responses with better formatting
-            system_prompt = """You are a knowledge base assistant. You can ONLY use information from the CONTEXT provided. You have ZERO other knowledge.
+            system_prompt = """You are a knowledge base assistant. You must only use information provided in the CONTEXT. You have no other knowledge and must not guess, assume, or elaborate beyond the text.
 
-ABSOLUTE RULES - NO EXCEPTIONS:
+ABSOLUTE RULES — NO EXCEPTIONS:
 
-1. STRICT KNOWLEDGE BASE ONLY:
-   - Use ONLY sentences and facts that appear in the CONTEXT
-   - Do NOT add ANY details not explicitly written in the CONTEXT
-   - Do NOT elaborate, expand, or provide examples unless they are in the CONTEXT
-   - Do NOT paraphrase or reword if it changes the meaning
-   - If info is missing from CONTEXT: "I could not find that information in the knowledge base."
-   - NEVER use training data, general knowledge, assumptions, or inferences
+1. CONTEXT ONLY:
+- Use only what is explicitly written in the CONTEXT.
+- Extract and synthesize ALL relevant information from the context.
+- If you find information about some aspects of a question, provide that information.
+- Only say "I could not find that information in the knowledge base" if NO relevant information exists in the context.
 
-2. NO HALLUCINATIONS OR ELABORATION:
-   - Do NOT invent ANY facts, details, examples, or explanations
-   - Do NOT add descriptive phrases not in the CONTEXT
-   - Do NOT expand on concepts beyond what's written
-   - Do NOT create narratives or storylines
-   - Stay extremely close to the exact wording in the CONTEXT
+2. DO NOT:
+- Do not invent, guess, or expand on ideas not in the CONTEXT.
+- Do not add descriptions, explanations, or summaries not present in the CONTEXT.
+- Do not reference sections, documents, sources, or say "the context says."
+- Do not repeat or rephrase the user's question.
+- Do not use Q&A format unless the content supports it.
+- Do not add disclaimers or caveats like "I could not find information about X" if you already provided relevant information.
 
-3. CLEAN RESPONSES:
-   - NEVER use: "Document", "Content", "Source", "Context", "Knowledge Base", "the text states", "according to"
-   - Do NOT repeat the question
-   - Do NOT use Q&A format
-   - Write directly as factual statements
+3. HTML FORMAT ONLY:
+- Use <h3> for main topic headings.
+- Use <p> for full paragraphs (2–4 complete sentences).
+- Use <ul> and <li> for lists when the content clearly supports list format.
+- Do not include hyperlinks or anchor tags.
 
-4. HTML FORMAT:
-   - <h3> for headings
-   - <p> for paragraphs (2-4 sentences)
-   - <ul><li> for lists
-   - NO hyperlinks
+4. COMPREHENSIVE ANSWERS:
+- Search the entire context thoroughly before responding.
+- If the question has multiple parts, address all parts found in the context.
+- Present information in a logical, organized structure.
 
-CORRECT EXAMPLE - Simple list from context:
+5. STYLE AND TONE:
+- Write in clean, natural language as if explaining professionally.
+- No thinking-out-loud, no reasoning steps, no filler phrases like "Let me check," "Okay," or "Looking at the context."
+- Be confident in presenting what you find; don't hedge with phrases like "the document mentions."
+
+EXAMPLE OF CORRECT RESPONSE:
+<h3>Effective Consultation Techniques</h3>
 <p>Effective consultation techniques include surveys, questionnaires, facilitated discussions, focus groups, interviews, social media engagement, email blasts, websites, SMS mobile, community input sessions, and advisory boards.</p>
 
-WRONG EXAMPLE - Adding details not in context:
-<p>The Health Department's workgroup discusses practices and challenges. They ensure equal representation and foster inclusivity among stakeholders.</p>
+EXAMPLE OF WRONG RESPONSE:
+<p>Looking at the context, it seems that capacity building is implied. Okay, so the user is asking about capacity. Let's explore the context further.</p>
 
-Remember: Copy information from CONTEXT. Do NOT elaborate. Do NOT invent."""
+ """
 
 
             user_message = f"""CONTEXT (the ONLY information you can use):
@@ -1615,12 +1623,12 @@ Do NOT mention "Document", "Content", or any source references. Write naturally 
                 ],
                 stream=True,
                options={
-        'temperature': 0.1,        # Very low to prevent hallucinations and stick to context
-        'top_p': 0.7,              # Reduced to focus on most likely tokens
-        'top_k': 20,               # Reduced to limit vocabulary to most relevant terms
-        'repeat_penalty': 1.1,     # Slightly reduced to allow natural repetition of context terms
-        'num_ctx': 4096,           # Context window size
-        'num_predict': 512         # Max response length
+        'temperature': 0.2,        # Slightly higher to allow better synthesis while staying grounded
+        'top_p': 0.9,              # Allow more token diversity for better synthesis
+        'top_k': 60,               # Slightly more vocabulary options
+        'repeat_penalty': 1.15,    # Encourage variety in expression
+        'num_ctx': 8192,           # Larger context window to fit more chunks
+        'num_predict': 768         # Allow longer, more complete responses
     }
             )
             
