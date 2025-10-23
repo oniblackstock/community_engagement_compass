@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Rendering & XSS Prevention Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 2rem;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        @media (max-width: 968px) {
+            .test-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .test-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .test-card h2 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 0.5rem;
+        }
+        
+        .test-input {
+            background: #f5f5f5;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            min-height: 120px;
+            resize: vertical;
+            line-height: 1.5;
+        }
+        
+        .test-output {
+            background: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 1rem;
+            min-height: 120px;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+        
+        .test-output h1, .test-output h2, .test-output h3, 
+        .test-output h4, .test-output h5, .test-output h6 {
+            color: #667eea;
+            margin: 1rem 0 0.5rem 0;
+            font-weight: 600;
+        }
+        
+        .test-output p {
+            margin: 0.5rem 0;
+            color: #555;
+        }
+        
+        .test-output ul, .test-output ol {
+            margin: 0.5rem 0 0.5rem 1.5rem;
+            color: #555;
+        }
+        
+        .test-output li {
+            margin: 0.25rem 0;
+        }
+        
+        .test-output strong {
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .test-output code {
+            background: #f0f0f0;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #d63384;
+        }
+        
+        .test-output pre {
+            background: #f0f0f0;
+            padding: 1rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        
+        .test-output a {
+            color: #667eea;
+            text-decoration: none;
+            border-bottom: 1px solid #667eea;
+        }
+        
+        .test-output a:hover {
+            color: #764ba2;
+            border-bottom-color: #764ba2;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+        
+        .btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .status {
+            padding: 0.75rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            font-weight: 500;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .status.danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
+        .status.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+            display: block;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #667eea;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-top: 1rem;
+            color: #004085;
+            font-size: 0.9rem;
+        }
+        
+        .info-box strong {
+            color: #002752;
+        }
+        
+        .comparison-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .comparison-section h2 {
+            color: #333;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 0.5rem;
+        }
+        
+        .comparison-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .comparison-row:last-child {
+            border-bottom: none;
+        }
+        
+        .comparison-item h4 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+        
+        .comparison-item .input {
+            background: #f5f5f5;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .comparison-item .output {
+            background: #f9f9f9;
+            padding: 0.75rem;
+            border-radius: 6px;
+            min-height: 60px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+        
+        .badge.pass {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge.fail {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 HTML Rendering & XSS Prevention Test</h1>
+            <p>Verify that HTML is rendered safely with DOMPurify sanitization</p>
+        </div>
+        
+        <div class="test-grid">
+            <!-- Test Case 1: Basic HTML Rendering -->
+            <div class="test-card">
+                <h2>Test 1: Basic HTML Rendering</h2>
+                <div class="status" id="status1"></div>
+                <textarea class="test-input" id="input1" readonly><p>This is a <strong>formatted</strong> paragraph.</p>
+<h3>Section Heading</h3>
+<ul>
+  <li>Item 1</li>
+  <li>Item 2</li>
+  <li>Item 3</li>
+</ul></textarea>
+                <div class="test-output" id="output1"></div>
+                <div class="info-box">
+                    <strong>Expected:</strong> Paragraph with bold, heading, and bullet list. <strong>No HTML tags visible.</strong>
+                </div>
+            </div>
+            
+            <!-- Test Case 2: XSS Prevention -->
+            <div class="test-card">
+                <h2>Test 2: XSS Attack Prevention</h2>
+                <div class="status" id="status2"></div>
+                <textarea class="test-input" id="input2" readonly><p>Safe content here.</p>
+<script>alert('XSS Attack!');</script>
+<img src=x onerror="alert('XSS')">
+<iframe src="malicious.com"></iframe></textarea>
+                <div class="test-output" id="output2"></div>
+                <div class="info-box">
+                    <strong>Expected:</strong> Only the &lt;p&gt; tag renders. <strong>Script, img, and iframe completely removed.</strong>
+                </div>
+            </div>
+            
+            <!-- Test Case 3: Link Handling -->
+            <div class="test-card">
+                <h2>Test 3: Link Handling</h2>
+                <div class="status" id="status3"></div>
+                <textarea class="test-input" id="input3" readonly><p>Check out <a href="https://example.com" target="_blank" rel="noopener">this link</a> for more information.</p></textarea>
+                <div class="test-output" id="output3"></div>
+                <div class="info-box">
+                    <strong>Expected:</strong> Clickable link with href, target, and rel attributes preserved.
+                </div>
+            </div>
+            
+            <!-- Test Case 4: Code Blocks -->
+            <div class="test-card">
+                <h2>Test 4: Code Blocks</h2>
+                <div class="status" id="status4"></div>
+                <textarea class="test-input" id="input4" readonly"><p>Use this command:</p>
+<pre><code>python manage.py runserver</code></pre>'
+<p>Or use <code>npm start</code>.</p></textarea>
+                <div class="test-output" id="output4"></div>
+                <div class="info-box">
+                    <strong>Expected:</strong> Code displays in monospace font with proper formatting.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Comparison Section -->
+        <div class="comparison-section">
+            <h2>Before vs After Comparison</h2>
+            
+            <div class="comparison-row">
+                <div class="comparison-item">
+                    <h4><span class="badge fail">BEFORE (Vulnerable)</span></h4>
+                    <div class="input">&lt;p&gt;Hello <strong>world</strong>&lt;/p&gt;</div>
+                    <p><strong>Result:</strong> Raw HTML tags visible to user</p>
+                    <div class="output">
+                        &lt;p&gt;Hello <strong>world</strong>&lt;/p&gt;
+                    </div>
+                </div>
+                <div class="comparison-item">
+                    <h4><span class="badge pass">AFTER (Secure)</span></h4>
+                    <div class="input">&lt;p&gt;Hello <strong>world</strong>&lt;/p&gt;</div>
+                    <p><strong>Result:</strong> Properly formatted text</p>
+                    <div class="output">
+                        <p>Hello <strong>world</strong></p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="comparison-row">
+                <div class="comparison-item">
+                    <h4><span class="badge fail">VULNERABLE (Old)</span></h4>
+                    <div class="input">&lt;script&gt;alert('XSS')&lt;/script&gt;</div>
+                    <p><strong>Result:</strong> Script executes! ⚠️</p>
+                    <div class="output" style="color: red;">
+                        ❌ Script tag NOT removed - XSS vulnerability!
+                    </div>
+                </div>
+                <div class="comparison-item">
+                    <h4><span class="badge pass">SECURE (New)</span></h4>
+                    <div class="input">&lt;script&gt;alert('XSS')&lt;/script&gt;</div>
+                    <p><strong>Result:</strong> Script blocked</p>
+                    <div class="output" style="color: green;">
+                        ✅ Script tag removed - Safe!
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 2rem; color: white;">
+            <p style="opacity: 0.8;">DOMPurify Sanitization Test Suite</p>
+            <p style="font-size: 0.9rem;">Open browser console (F12) to see detailed output</p>
+        </div>
+    </div>
+    
+    <script>
+        /**
+         * Format message using DOMPurify - Same as in chat.html
+         */
+        function formatMessage(content) {
+            if (!content || !content.trim()) {
+                return '';
+            }
+            
+            if (typeof DOMPurify !== 'undefined') {
+                const config = {
+                    ALLOWED_TAGS: ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'strong', 'em', 'code', 'pre', 'blockquote', 'a', 'br'],
+                    ALLOWED_ATTR: ['href', 'target', 'rel'],
+                    KEEP_CONTENT: true
+                };
+                return DOMPurify.sanitize(content, config);
+            }
+            
+            // Fallback
+            content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+            return content;
+        }
+        
+        /**
+         * Run all tests
+         */
+        function runTests() {
+            console.log('🧪 Starting HTML Rendering Tests...\n');
+            
+            // Test 1: Basic HTML Rendering
+            runTest(1, 'Basic HTML Rendering', () => {
+                const input = document.getElementById('input1').value;
+                const output = formatMessage(input);
+                document.getElementById('output1').innerHTML = output;
+                
+                // Check if HTML tags are not visible as text
+                const hasVisibleTags = /&lt;[ph|ul|li]/i.test(output) || /&gt;/i.test(output);
+                return !hasVisibleTags && output.includes('<p>') && output.includes('<strong>');
+            });
+            
+            // Test 2: XSS Prevention
+            runTest(2, 'XSS Attack Prevention', () => {
+                const input = document.getElementById('input2').value;
+                const output = formatMessage(input);
+                document.getElementById('output2').innerHTML = output;
+                
+                // Check that dangerous elements are removed
+                const hasScript = output.toLowerCase().includes('<script');
+                const hasImg = output.toLowerCase().includes('<img');
+                const hasIframe = output.toLowerCase().includes('<iframe');
+                
+                return !hasScript && !hasImg && !hasIframe && output.includes('<p>');
+            });
+            
+            // Test 3: Link Handling
+            runTest(3, 'Link Handling', () => {
+                const input = document.getElementById('input3').value;
+                const output = formatMessage(input);
+                document.getElementById('output3').innerHTML = output;
+                
+                // Check that link is preserved with attributes
+                return output.includes('<a') && output.includes('href=') && output.includes('target=');
+            });
+            
+            // Test 4: Code Blocks
+            runTest(4, 'Code Blocks', () => {
+                const input = document.getElementById('input4').value;
+                const output = formatMessage(input);
+                document.getElementById('output4').innerHTML = output;
+                
+                // Check that code blocks are preserved
+                return output.includes('<code>') && output.includes('<pre>');
+            });
+            
+            console.log('\n✅ All tests completed!');
+        }
+        
+        /**
+         * Run a single test
+         */
+        function runTest(testNum, name, testFn) {
+            try {
+                const passed = testFn();
+                const statusEl = document.getElementById(`status${testNum}`);
+                
+                if (passed) {
+                    statusEl.className = 'status success';
+                    statusEl.innerHTML = '✅ PASS: ' + name;
+                    console.log(`✅ Test ${testNum}: ${name} - PASSED`);
+                } else {
+                    statusEl.className = 'status danger';
+                    statusEl.innerHTML = '❌ FAIL: ' + name;
+                    console.log(`❌ Test ${testNum}: ${name} - FAILED`);
+                }
+            } catch (error) {
+                const statusEl = document.getElementById(`status${testNum}`);
+                statusEl.className = 'status danger';
+                statusEl.innerHTML = '❌ ERROR: ' + error.message;
+                console.error(`❌ Test ${testNum}: ${name} - ERROR: ${error.message}`);
+            }
+        }
+        
+        /**
+         * Check DOMPurify availability
+         */
+        function checkDOMPurify() {
+            if (typeof DOMPurify !== 'undefined') {
+                console.log('✅ DOMPurify loaded successfully');
+                console.log('Version:', DOMPurify.VERSION);
+                return true;
+            } else {
+                console.error('❌ DOMPurify not loaded');
+                return false;
+            }
+        }
+        
+        // Run tests on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('HTML Rendering Test Suite');
+            console.log('=========================\n');
+            
+            checkDOMPurify();
+            console.log('');
+            
+            runTests();
+            
+            console.log('\n📋 Test Results:');
+            console.log('Test 1: Basic HTML - Check that <p>, <h3>, <ul>, <li>, <strong> render without showing tags');
+            console.log('Test 2: XSS Prevention - Check that <script>, <img>, <iframe> are completely removed');
+            console.log('Test 3: Links - Check that <a> tags render with href, target, rel attributes');
+            console.log('Test 4: Code - Check that <code> and <pre> tags render properly');
+        });
+    </script>
+</body>
+</html>

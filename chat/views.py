@@ -301,6 +301,13 @@ def send_message_stream(request, session, messages, similar_chunks=None):
             
             # Save the HTML response directly (no post-processing needed)
             if full_response.strip():
+                # Validate response before saving
+                from chat.services import validate_chatbot_response
+                user_question = messages[-1].content
+                is_valid, warnings = validate_chatbot_response(full_response, user_question)
+                if warnings:
+                    logger.warning(f"Streaming response validation warnings for question '{user_question[:100]}...': {warnings}")
+                
                 # Save the HTML response to database
                 assistant_message = ChatMessage.objects.create(
                     session=session,

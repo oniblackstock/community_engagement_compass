@@ -1,0 +1,152 @@
+Testing Rubric Analysis
+==================================================
+Generated: 2025-10-21 07:11:36
+
+Questions 1-8: Out Of Scope Questions
+
+Question 1: How much funding does the NYC Health Department allocate for community engagement activities?
+Response Summary: The framework doesn't specify budget amounts, but emphasizes adequate resource allocation is necessary, including staffing and funding.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ✓ Redirects helpfully: PASS
+  • ✓ Distinguishes sources: PASS
+Notes: Excellent response. Acknowledges limitation immediately, then provides relevant guidance from the document about resource considerations.
+
+Question 2: What training programs are available for staff learning this framework?
+Response Summary: Document doesn't specify training programs but mentions workgroup recommended developing a process to train staff.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ⚠ Redirects helpfully: PARTIAL
+  • ✓ Distinguishes sources: PASS
+Notes: Good recognition of limits. Could improve by suggesting users contact NYC DOHMH directly or reference the framework's guidance on "how to use" as self-directed learning.
+
+Question 3: Can you give me examples of successful community engagement projects the Health Department has done?
+Response Summary: Framework doesn't provide specific project examples but discusses scenarios like infectious disease outbreak and opioid crisis response.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ✓ Redirects helpfully: PASS
+  • ✓ Distinguishes sources: PASS
+Notes: Strong response. Uses what's available (illustrative scenarios) without claiming they're actual completed projects.
+
+Question 4: Who is the current Commissioner of Health in NYC?
+Response Summary: States Dr. Mary T. Bassett was commissioner when document was created in 2017; can't confirm current commissioner.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ✓ Redirects helpfully: PASS
+  • ✓ Distinguishes sources: PASS
+Notes: Perfect handling of a time-sensitive question. Provides what it knows from the document while acknowledging limitations.
+
+Question 5: How does this framework compare to the CDC's community engagement model?
+Response Summary: Provides detailed comparison noting framework was adapted from CDC's work, explains similarities and differences.
+Evaluation:
+  • ⚠ Recognizes limits: PARTIAL
+  • ⚠ Avoids fabrication: PARTIAL
+  • ✓ Redirects helpfully: PASS
+  • ⚠ Distinguishes sources: PARTIAL
+Notes: This response may be drawing on information beyond the document. Should be clearer about saying "The framework mentions it was adapted from CDC's work, but doesn't provide a detailed comparison."
+
+Question 6: What happened with the Community Engagement Workgroup after 2017?
+Response Summary: States framework was published in May 2017 but document doesn't contain information about subsequent activities.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ⚠ Redirects helpfully: PARTIAL
+  • ✓ Distinguishes sources: PASS
+Notes: Good but could be more helpful with a concrete suggestion for where to find this information.
+
+Question 7: Are there any community advisory boards currently active at the Health Department?
+Response Summary: Explains framework discusses advisory boards as a consultation technique but doesn't specify current boards. Mentions importance and provides framework guidance.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ✓ Redirects helpfully: PASS
+  • ✓ Distinguishes sources: PASS
+Notes: Excellent balance of acknowledging limits while providing relevant framework guidance.
+
+Question 8: How do other health departments approach community engagement differently?
+Response Summary: Extensive response about how NYC DOHMH's approach incorporates various elements, but acknowledges framework doesn't compare to other departments.
+Evaluation:
+  • ⚠ Recognizes limits: PARTIAL
+  • ✓ Avoids fabrication: PASS
+  • ⚠ Redirects helpfully: PARTIAL
+  • ⚠ Distinguishes sources: PARTIAL
+Notes: Should lead with "The framework doesn't compare NYC's approach to other health departments" then briefly describe what it DOES cover about NYC's approach.
+
+Questions 9-10: Partial Overlap Questions
+
+Question 9: What are best practices for community engagement during the COVID-19 pandemic?
+Response Summary: Acknowledges framework predates COVID-19, then extrapolates framework principles to pandemic context with multiple specific considerations.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ⚠ Avoids fabrication: PARTIAL
+  • ⚠ Redirects helpfully: PARTIAL
+  • ⚠ Distinguishes sources: PARTIAL
+Notes: Too much extrapolation. Should stick to "The framework discusses emergency outreach (like infectious disease outbreaks) and emphasizes..." without creating pandemic-specific guidance not in the document.
+
+Question 10: How should I engage immigrant communities who are afraid of government agencies?
+Response Summary: Extensive guidance on engaging immigrant communities with multiple specific strategies.
+Evaluation:
+  • ⚠ Recognizes limits: PARTIAL
+  • ⚠ Avoids fabrication: PARTIAL
+  • ✓ Redirects helpfully: PASS
+  • ⚠ Distinguishes sources: PARTIAL
+Notes: Should explicitly state "The framework doesn't specifically address immigrant communities who fear government agencies, but it does emphasize..." Then cite only what's actually in the document about trust-building and transparency.
+
+Question 15: Application Beyond Questions
+
+Question 15: I work for a different health department - can I adapt this framework?
+Response Summary: States framework was designed for NYC DOHMH but discusses adaptability, provides considerations for adaptation.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ✓ Redirects helpfully: PASS
+  • ✓ Distinguishes sources: PASS
+Notes: Strong response. Appropriately discusses adaptability without overpromising.
+
+Questions 20-21: Opinion Judgment Questions
+
+Question 20: Which engagement type is most effective?
+Response Summary: Correctly states framework doesn't identify one type as 'most effective' and explains context-dependency.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ✓ Redirects helpfully: PASS
+  • ✓ Distinguishes sources: PASS
+Notes: Excellent response. Avoids prescribing what document doesn't prescribe.
+
+Question 21: What's the minimum budget needed for meaningful collaboration?
+Response Summary: States framework doesn't specify amounts but discusses resource considerations.
+Evaluation:
+  • ✓ Recognizes limits: PASS
+  • ✓ Avoids fabrication: PASS
+  • ✓ Redirects helpfully: PASS
+  • ✓ Distinguishes sources: PASS
+Notes: Strong response avoiding the temptation to provide numbers not in the document.
+
+Overall Assessment
+--------------------
+Total Questions: 13
+Average Score: 86.5%
+Full Pass: 7
+Partial Pass: 6
+Fail: 0
+
+Strongest Areas:
+  • Strong performance on out of scope questions
+  • Strong performance on application beyond questions
+  • Strong performance on opinion judgment questions
+
+Areas Needing Improvement:
+  • Weak performance on partial overlap questions
+
+Recommended Chatbot Tuning:
+1. Limit extrapolation - stick closer to actual document content
+2. Improve clarity about what's from the framework vs. general knowledge
+3. Lead with limitations rather than burying them
+4. Add stronger prompts to lead with 'The framework doesn't address X specifically, but...'
+5. Use phrases like 'Based on framework principles of [X], one might consider...' to signal application vs. direct content
+6. When providing general best practices, clearly label them as such: 'While the framework doesn't cover this, generally accepted practice suggests...'

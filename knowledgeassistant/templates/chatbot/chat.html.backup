@@ -416,10 +416,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             word-wrap: break-word;
             max-width: 100%;
-            font-family: 'Inter', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif;
-            font-size: 16px;
-            line-height: 1.7;
-            letter-spacing: -0.3px;
         }
 
         /* Markdown content styling */
@@ -579,50 +575,20 @@
 
         .message.user .message-content {
             background: var(--chat-bubble-user);
-            color: #ffffff !important;
+            color: white;
             border-bottom-right-radius: 4px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        
-        /* Ensure all text elements in user messages are white */
-        .message.user .message-content p,
-        .message.user .message-content h1,
-        .message.user .message-content h2,
-        .message.user .message-content h3,
-        .message.user .message-content h4,
-        .message.user .message-content h5,
-        .message.user .message-content h6,
-        .message.user .message-content span,
-        .message.user .message-content strong,
-        .message.user .message-content em,
-        .message.user .message-content li,
-        .message.user .message-content code {
-            color: #ffffff !important;
-        }
-        
-        .message.user .message-content ul,
-        .message.user .message-content ol {
-            color: #ffffff !important;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
 
         .message.assistant .message-content {
-            background: #f5f5f5;
-            border: 1px solid #e8e8e8;
-            color: #2c3e50;
+            background: var(--chat-bubble-assistant);
+            border: 1px solid var(--border-color);
+            color: var(--dark-bg);
             border-bottom-left-radius: 4px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
 
-                /* User message text color overrides - CRITICAL for visibility */
-        .message.user .message-content {
-            color: #ffffff !important;
-        }
-        
-        .message.user .message-content * {
-            color: #ffffff !important;
-        }
-        
-/* Remove underlines but add proper color contrast for readability */
+        /* Remove underlines but add proper color contrast for readability */
         .message-content * {
             text-decoration: none !important;
             text-decoration-line: none !important;
@@ -1269,16 +1235,7 @@
             }
 
             async sendMessage() {
-                // Format and clean the message text
-                let message = this.textarea.value
-                    .trim()  // Remove leading/trailing whitespace
-                    .replace(/\n\n+/g, '\n')  // Remove multiple line breaks
-                    .replace(/  +/g, ' ')  // Normalize multiple spaces to single space
-                    .split('\n')  // Split by lines
-                    .map(line => line.trim())  // Trim each line
-                    .filter(line => line.length > 0)  // Remove empty lines
-                    .join('\n');  // Rejoin with single line breaks
-                
+                const message = this.textarea.value.trim();
                 if (!message || this.isStreaming) return;
 
                 const useStreaming = this.streamingToggle.checked;
@@ -1585,30 +1542,8 @@
             }
 
             addUserMessage(message) {
-                // Format message for display (convert line breaks to visual breaks)
-                const displayMessage = this.formatUserMessage(message);
-                const messageElement = this.createMessageElement('user', displayMessage);
-                
-                // Force white text color on user message
-                const messageContent = messageElement.querySelector('.message-content');
-                if (messageContent) {
-                    messageContent.style.color = '#ffffff';
-                    // Ensure all child elements are white
-                    messageContent.querySelectorAll('*').forEach(el => {
-                        el.style.color = '#ffffff';
-                    });
-                }
-                
+                const messageElement = this.createMessageElement('user', message);
                 this.scrollToBottom();
-            }
-            
-            formatUserMessage(message) {
-                // Replace line breaks with proper HTML paragraphs
-                return message
-                    .split('\n')
-                    .filter(line => line.trim().length > 0)
-                    .map(line => `<p>${this.escapeHtml(line.trim())}</p>`)
-                    .join('');
             }
 
             addAssistantMessage(content, sources = null) {
@@ -1695,28 +1630,17 @@
                 messageContent.appendChild(sourcesDiv);
             }
 
-            formatMessage(content) {
-                // Content is already in HTML format from the model
-                if (!content || !content.trim()) {
-                    return '';
-                }
-                
-                // SECURITY: Use DOMPurify to sanitize HTML and prevent XSS attacks
-                // Allow common HTML tags for formatting: paragraphs, headings, lists, text styling, code
-                if (typeof DOMPurify !== 'undefined') {
-                    const config = {
-                        ALLOWED_TAGS: ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'strong', 'em', 'code', 'pre', 'blockquote', 'a', 'br'],
-                        ALLOWED_ATTR: ['href', 'target', 'rel'],
-                        KEEP_CONTENT: true
-                    };
-                    return DOMPurify.sanitize(content, config);
-                }
-                
-                // Fallback if DOMPurify not loaded
-                content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-                return content;
-            }
-
+             formatMessage(content) {
+                 // Content is already in HTML format from the model, just return it with basic sanitization
+                 if (!content || !content.trim()) {
+                     return '';
+                 }
+                 
+                 // Basic sanitization - remove potentially harmful elements
+                 content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+                 
+                 return content;
+             }
 
             fallbackFormatMessage(content) {
                 // Clean fallback formatting matching backend approach
