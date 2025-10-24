@@ -1095,7 +1095,7 @@
                     </div>
                     <div class="message-content">
                          <!-- Render HTML directly since responses are now in HTML format -->
-                         {{ message.content|safe }}
+                         {{ message.content|sanitize_html }}
                         {% if message.source_links.all %}
                         <div class="message-sources">
                             <strong><i class="fas fa-book me-1"></i>Sources:</strong>

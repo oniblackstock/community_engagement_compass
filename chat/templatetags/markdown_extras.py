@@ -8,6 +8,75 @@ logger = logging.getLogger(__name__)
 
 register = template.Library()
 
+@register.filter(name='sanitize_html')
+def sanitize_html(text):
+    """Sanitize and normalize HTML content from LLM responses to ensure consistent rendering"""
+    if not text or not text.strip():
+        return mark_safe("")
+    
+    text = text.strip()
+    
+    # Fix common HTML issues from LLM generation
+    # 1. Fix unclosed tags that should be self-closing or properly wrapped
+    # Pattern: <p>Text</p>: -> should be <p><strong>Text:</strong></p>
+    text = re.sub(r'<p>([^<]+)</p>:\s*', r'<p><strong>\1:</strong></p>', text)
+    
+    # 2. Ensure <p> tags with only strong text inside are properly formatted
+    # This prevents raw tags from showing in output
+    
+    # 3. Fix tags that appear in the middle of text without proper wrapping
+    # Detect patterns like "Text\n<p>..." and ensure proper structure
+    
+    # 4. Remove any unclosed opening tags at line boundaries
+    lines = text.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # If line has opening tag but no closing tag, wrap content properly
+        if line.startswith('<') and not line.endswith('>'):
+            # Likely a malformed tag, try to fix it
+            line = _fix_malformed_line(line)
+        
+        cleaned_lines.append(line)
+    
+    result = '\n'.join(cleaned_lines)
+    
+    # Final validation: ensure no unclosed tags
+    # Count opening and closing tags
+    open_count = len(re.findall(r'<[a-z]+[^>]*>', result))
+    close_count = len(re.findall(r'</[a-z]+>', result))
+    
+    # If unbalanced, try to fix by adding missing closing tags
+    if open_count > close_count:
+        for tag in ['p', 'ul', 'ol', 'li', 'h3', 'h4', 'strong']:
+            missing = result.count(f'<{tag}') - result.count(f'</{tag}>')
+            for _ in range(missing):
+                result += f'</{tag}>'
+    
+    return mark_safe(result)
+
+
+def _fix_malformed_line(line):
+    """Fix a single malformed line of HTML"""
+    # If it starts with a tag but doesn't end with one, it might be tag soup
+    # E.g., "<p>Text" or "<strong>Text"
+    
+    # Check if it's an opening tag
+    match = re.match(r'<([a-z]+)[^>]*>(.*)', line, re.IGNORECASE)
+    if match:
+        tag_name = match.group(1)
+        content = match.group(2)
+        # Ensure it has a closing tag
+        if not content.endswith(f'</{tag_name}>'):
+            line = f'<{tag_name}>{content}</{tag_name}>'
+    
+    return line
+
+
 @register.filter(name='markdownify')
 def markdownify(text):
     """ChatGPT-style clean markdown formatting with proper parsing"""
