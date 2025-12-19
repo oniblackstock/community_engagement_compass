@@ -4,13 +4,13 @@ import os
 
 def download_llama_3_2_3b():
     """Download Llama-3.2-3B model - Meta's excellent 3B model"""
-    
+
     # Authenticate with Hugging Face
-    hf_token = "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"
+    hf_token = ""
     print("Authenticating with Hugging Face...")
     login(token=hf_token)
     print("✓ Authentication successful")
-    
+
     model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'llama-3-2-3b')
     print(f"\nDownloading Llama-3.2-3B model to {model_path}")
     print("\n" + "="*60)

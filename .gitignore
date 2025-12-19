@@ -369,7 +369,7 @@ Session.vim
 
 # Auto-generated tag files
 tags
-
+.env/
 # Redis dump file
 dump.rdb
 
