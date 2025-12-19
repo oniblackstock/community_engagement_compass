@@ -363,7 +363,7 @@ GitHub.sublime-settings
 
 # Session
 Session.vim
-
+venv
 # Temporary
 .netrwhist
 
