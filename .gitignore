@@ -363,13 +363,13 @@ GitHub.sublime-settings
 
 # Session
 Session.vim
-
+venv
 # Temporary
 .netrwhist
 
 # Auto-generated tag files
 tags
-
+.env/
 # Redis dump file
 dump.rdb
 

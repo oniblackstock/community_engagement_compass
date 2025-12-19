@@ -36,6 +36,7 @@ def add_streaming_to_chat_service():
             # Generate the complete response first
             full_response = self.generate_response(messages, similar_chunks)
             
+            # Don't clean here - let JavaScript handle cleaning consistently
             # Split response into words and yield them with small delay
             words = full_response.split()
             for i, word in enumerate(words):
@@ -193,33 +194,50 @@ def send_message(request):
         # Update session title if this is the first message
         if session.messages.count() == 1:
             session.update_title_from_message(message_content)
+            # Invalidate cache after session update
+            cache.delete(f"user_sessions_{request.user.id}")
 
         # Get conversation history
         messages = list(session.messages.select_related('session').all())
         
-        # Get relevant document chunks using RAG
+        # Get relevant document chunks using RAG with improved search
         similar_chunks = []
         try:
-            similar_chunks = embedding_service.search_similar_chunks(
+            # Use expanded search for better results, especially for comparative queries
+            similar_chunks = embedding_service.search_similar_chunks_enhanced(
                 message_content, 
-                top_k=3
+                top_k=10,  # Increased from 3 to get more relevant content
+                similarity_threshold=0.3  # Lowered from 0.4 for broader results
             )
             logger.info(f"Found {len(similar_chunks)} similar chunks for query")
         except Exception as e:
             logger.warning(f"Error in similarity search: {str(e)}")
+            # Fallback to original method if enhanced search fails
+            try:
+                similar_chunks = embedding_service.search_similar_chunks(
+                    message_content, 
+                    top_k=10,
+                    similarity_threshold=0.3
+                )
+                logger.info(f"Fallback search found {len(similar_chunks)} similar chunks")
+            except Exception as fallback_e:
+                logger.warning(f"Fallback search also failed: {str(fallback_e)}")
         
         if streaming:
             return send_message_stream(request, session, messages, similar_chunks)
         else:
             # Generate response with context
             response_content = chat_service.generate_response(messages, similar_chunks)
-
-            # Create assistant message
+            
+            # Save ORIGINAL markdown to database - preserve formatting structure
             assistant_message = ChatMessage.objects.create(
                 session=session,
                 message_type='assistant',
-                content=response_content
+                content=response_content  # Save original markdown with full structure
             )
+
+            # Invalidate cache after saving message
+            cache.delete(f"user_sessions_{request.user.id}")
 
             # Add sources if chunks were used (UI will render as a separate block)
             sources_data = []
@@ -251,9 +269,10 @@ def send_message(request):
                         'url': request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
                     })
 
+            # Send original markdown - let JavaScript handle cleaning and formatting consistently
             return JsonResponse({
                 'status': 'success',
-                'response': response_content,
+                'response': response_content,  # Send original markdown
                 'session_name': session.session_name,
                 'session_id': str(session.id),
                 'sources': sources_data
@@ -266,25 +285,38 @@ def send_message(request):
 
 def send_message_stream(request, session, messages, similar_chunks=None):
     """Fixed streaming response that works with Django dev server"""
+    from .services import post_process_response
+    
     def generate_stream():
         try:
             full_response = ""
             
-            # Generate streaming response
+            # Generate streaming response - tokens come in real-time now
             for token in chat_service.generate_response_stream(messages, similar_chunks):
-                if token.strip():
+                if token:
                     full_response += token
                     
-                    # Send token as Server-Sent Event (without Connection header)
+                    # Send token as Server-Sent Event for real-time display
                     yield f"data: {json.dumps({'token': token, 'type': 'token'})}\n\n"
             
-            # Save the complete response to database
+            # Save the HTML response directly (no post-processing needed)
             if full_response.strip():
+                # Validate response before saving
+                from chat.services import validate_chatbot_response
+                user_question = messages[-1].content
+                is_valid, warnings = validate_chatbot_response(full_response, user_question)
+                if warnings:
+                    logger.warning(f"Streaming response validation warnings for question '{user_question[:100]}...': {warnings}")
+                
+                # Save the HTML response to database
                 assistant_message = ChatMessage.objects.create(
                     session=session,
                     message_type='assistant',
-                    content=full_response
+                    content=full_response  # Save HTML response directly
                 )
+                
+                # Invalidate cache after saving message
+                cache.delete(f"user_sessions_{session.user.id}")
                 
                 # Add sources if available
                 sources_data = []
@@ -305,7 +337,7 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                             chunk=chunk,
                             similarity=score,
                             confidence=similarity_to_confidence(score),
-                            url=request.build_absolute_uri(chunk.document.file.url) if hasattr(chunk.document.file, 'url') else ''
+                            url=''  # Set empty for now, can be updated later if needed
                         )
                         sources_data.append({
                             'title': chunk.document.title,
@@ -317,14 +349,13 @@ def send_message_stream(request, session, messages, similar_chunks=None):
                 else:
                     sources_data = []
             
-            # Do not append sources into the streamed text; UI will display from payload
-
-            # Send completion signal
+            # Send completion signal with HTML content for final rendering
             yield f"data: {json.dumps({
                 'type': 'complete', 
                 'session_name': session.session_name, 
                 'session_id': str(session.id),
-                'sources': sources_data
+                'sources': sources_data,
+                'final_content': full_response if full_response.strip() else ''
             })}\n\n"
             
         except Exception as e:
@@ -412,14 +443,27 @@ def rename_session(request, session_id):
 
 
 @login_required
+@require_http_methods(["POST"])
 def delete_session(request, session_id):
     """Delete a chat session"""
-    if request.method == 'POST':
+    try:
         session = get_object_or_404(ChatSession, id=session_id, user=request.user)
         session.delete()
         cache.delete(f"user_sessions_{request.user.id}")
-        messages.success(request, 'Chat session deleted successfully.')
-    return redirect('chatbot:chat_home')
+        
+        # Check if this is an AJAX request
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', ''):
+            return JsonResponse({'status': 'success', 'message': 'Chat session deleted successfully.'})
+        else:
+            messages.success(request, 'Chat session deleted successfully.')
+            return redirect('chatbot:chat_home')
+    except Exception as e:
+        logger.error(f"Error deleting session: {str(e)}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', ''):
+            return JsonResponse({'status': 'error', 'message': 'Failed to delete chat session.'}, status=500)
+        else:
+            messages.error(request, 'Failed to delete chat session.')
+            return redirect('chatbot:chat_home')
 
 
 # Admin Views
