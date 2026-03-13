@@ -1057,7 +1057,7 @@ class EmbeddingService:
             return
             
         # Use the best embedding model for improved accuracy and retrieval
-        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')
+        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5', device='cpu')
         self.dimension = 1024
         self.index_path = os.path.join(settings.MEDIA_ROOT, 'faiss_index.bin')
         self.mapping_path = os.path.join(settings.MEDIA_ROOT, 'chunk_mapping.pkl')
@@ -1482,8 +1482,9 @@ class ChatService:
             
         # Use Ollama for optimized model management
         self.ollama_client = ollama.Client()
-        # self.model_name = "llama3:8b"
         self.model_name = "llama3:8b"
+        # self.model_name = "llama3.2:3b"
+        # self.model_name = "gemma2:2b"
 
         
         # Test Ollama connection
