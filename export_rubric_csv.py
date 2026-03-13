@@ -18,8 +18,9 @@ django.setup()
 
 from chatbot_rubric_tester import ChatbotRubricTester, Score
 
+
 def export_to_csv(tester: ChatbotRubricTester, filename: str = "rubric_results.csv"):
-    """Export test results to CSV"""
+    """Export test results to CSV""" 
     with open(filename, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         
