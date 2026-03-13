@@ -60,13 +60,16 @@
         }
 
         .chat-container {
-            height: calc(100vh - 72px);
+            height: calc(100vh - var(--navbar-height, 72px));
             display: flex;
             background: var(--light-bg);
+            overflow: hidden;
         }
 
         .sidebar {
             width: 300px;
+            min-width: 300px;
+            flex-shrink: 0;
             background: white;
             border-right: 1px solid var(--border-color);
             display: flex;
@@ -277,12 +280,14 @@
 
         .chat-main {
             flex: 1;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             background: white;
             border-radius: 12px;
             margin: 1rem;
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            overflow: hidden;
         }
 
         .chat-header {
@@ -415,6 +420,7 @@
             position: relative;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             word-wrap: break-word;
+            overflow-wrap: break-word;
             max-width: 100%;
             font-family: 'Inter', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif;
             font-size: 16px;
@@ -896,7 +902,7 @@
             .sidebar {
                 position: fixed;
                 left: -300px;
-                top: 72px;
+                top: var(--navbar-height, 72px);
                 bottom: 0;
                 z-index: 1000;
                 transition: left 0.3s ease;
@@ -975,7 +981,7 @@
     <link rel="stylesheet" href="{% static 'css/healthjustice.css' %}">
 {% endblock %}
 
-{% block content %}
+{% block navbar %}
     <nav class="navbar fixed-top" style="z-index: 1030;">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">
@@ -1007,7 +1013,7 @@
                     <i class="fas fa-circle-question me-2"></i>
                     <span class="d-none d-md-inline">How it works</span>
                 </a>
-                
+
                 <a href="{% url 'chatbot:feedback' %}" class="btn admin-btn me-3">
                     <i class="fas fa-message me-2"></i>
                     <span class="d-none d-md-inline">Feedback</span>
@@ -1032,8 +1038,27 @@
             </div>
         </div>
     </nav>
+{% endblock %}
 
-    <div class="chat-container" style="margin-top: 72px;">
+{% block content %}
+    <script>
+      (function(){
+        var nav = document.querySelector('.navbar.fixed-top');
+        if(nav){
+          var h = nav.offsetHeight + 'px';
+          document.documentElement.style.setProperty('--navbar-height', h);
+          var cc = document.getElementById('chat-container');
+          if(cc) cc.style.marginTop = h;
+          window.addEventListener('resize', function(){
+            var h = nav.offsetHeight + 'px';
+            document.documentElement.style.setProperty('--navbar-height', h);
+            if(cc) cc.style.marginTop = h;
+          });
+        }
+      })();
+    </script>
+
+    <div class="chat-container" id="chat-container">
         <div class="sidebar">
             <a class="new-chat-btn" href="{% url 'chatbot:create_chat_session' %}">
                 <i class="fas fa-plus me-2"></i>New Chat

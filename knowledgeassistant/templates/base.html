@@ -113,7 +113,18 @@
       </div>
     </nav>
   </div>
-  <div style="height:64px"></div>
+  <div id="navbar-spacer"></div>
+  <script>
+    (function(){
+      var nav = document.querySelector('.navbar.fixed-top');
+      var spacer = document.getElementById('navbar-spacer');
+      if(nav && spacer){
+        function adjust(){ spacer.style.height = nav.offsetHeight + 'px'; }
+        adjust();
+        window.addEventListener('resize', adjust);
+      }
+    })();
+  </script>
   {% if request.user.is_authenticated %}
   <script>
     (function(){

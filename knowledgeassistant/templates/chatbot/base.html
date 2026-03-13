@@ -318,7 +318,19 @@
     </nav>
     {% endblock %}
 
-    <main>
+    <div id="navbar-spacer"></div>
+    <script>
+      (function(){
+        var nav = document.querySelector('.navbar.fixed-top');
+        var spacer = document.getElementById('navbar-spacer');
+        if(nav && spacer){
+          function adjust(){ spacer.style.height = nav.offsetHeight + 'px'; }
+          adjust();
+          window.addEventListener('resize', adjust);
+        }
+      })();
+    </script>
+    <main style="margin-top: 0; padding-top: 0;">
         {% block content %}{% endblock %}
     </main>
 

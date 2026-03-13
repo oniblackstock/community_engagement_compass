@@ -120,7 +120,7 @@
         max-width: 1200px;
         margin: 0 auto;
         padding: var(--spacing-xl) var(--spacing-lg);
-        padding-top: calc(72px + var(--spacing-xl)); /* Add space for fixed navbar */
+        padding-top: var(--spacing-xl); /* navbar spacer handled by base template */
     }
 
     /* Stats Grid */
@@ -538,14 +538,15 @@
 <link rel="stylesheet" href="{% static 'css/healthjustice.css' %}">
 {% endblock %}
 
-{% block content %}
+{% block navbar %}
     <nav class="navbar fixed-top" style="z-index: 1030;">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">
-                <img src="{% static 'images/healthjustice-logo.webp' %}" alt="Health Justice" height="44" class="me-2">
-                Community Engagement Compass
-            </a>
+
             <div class="d-flex align-items-center">
+                <a class="navbar-brand" href="#">
+                    <img src="{% static 'images/healthjustice-logo.webp' %}" alt="Health Justice" height="44" class="me-2">
+                    Community Engagement Compass
+                </a>
                 {% if request.user.is_authenticated %}
                 <span class="text-white me-3 d-none d-md-inline" style="opacity: .9;">
                     Welcome, {{ request.user.name|default:request.user.username|default:request.user.email }}!
@@ -563,7 +564,7 @@
                     <i class="fas fa-circle-question me-2"></i>
                     <span class="d-none d-md-inline">How it works</span>
                 </a>
-                
+
                 <a href="{% url 'chatbot:feedback' %}" class="btn admin-btn me-3">
                     <i class="fas fa-message me-2"></i>
                     <span class="d-none d-md-inline">Feedback</span>
@@ -585,7 +586,9 @@
             </div>
         </div>
     </nav>
+{% endblock %}
 
+{% block content %}
 <div class="dashboard-main">
     <!-- Stats Grid -->
     <div class="stats-grid">
