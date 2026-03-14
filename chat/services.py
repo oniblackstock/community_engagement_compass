@@ -1057,7 +1057,7 @@ class EmbeddingService:
             return
             
         # Use the best embedding model for improved accuracy and retrieval
-        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5', device='cpu')
+        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5', device='cuda')
         self.dimension = 1024
         self.index_path = os.path.join(settings.MEDIA_ROOT, 'faiss_index.bin')
         self.mapping_path = os.path.join(settings.MEDIA_ROOT, 'chunk_mapping.pkl')
@@ -1122,60 +1122,15 @@ class EmbeddingService:
             raise
     
     def add_to_faiss_index(self, chunk_embeddings):
-        """Add new embeddings to existing FAISS index incrementally"""
+        """Add new embeddings to FAISS index. Does a full rebuild to avoid stale/duplicate entries."""
         try:
             if not chunk_embeddings:
                 return
-                
-            # Load existing index and mapping
-            if os.path.exists(self.index_path) and os.path.exists(self.mapping_path):
-                index = faiss.read_index(self.index_path)
-                with open(self.mapping_path, 'rb') as f:
-                    chunk_mapping = pickle.load(f)
-            else:
-                # Create new index if it doesn't exist
-                index = faiss.IndexFlatIP(self.dimension)
-                chunk_mapping = []
-            
-            # Prepare new embeddings
-            new_embeddings = []
-            new_chunk_ids = []
-            
-            for chunk_id, embedding in chunk_embeddings:
-                new_embeddings.append(embedding)
-                new_chunk_ids.append(chunk_id)
-            
-            if new_embeddings:
-                # Convert to numpy array and normalize
-                embeddings_array = np.array(new_embeddings).astype('float32')
-                faiss.normalize_L2(embeddings_array)
-                
-                # Add to index
-                index.add(embeddings_array)
-                
-                # Update mapping
-                chunk_mapping.extend(new_chunk_ids)
-                
-                # Save updated index and mapping
-                faiss.write_index(index, self.index_path)
-                with open(self.mapping_path, 'wb') as f:
-                    pickle.dump(chunk_mapping, f)
-                
-                # Update metadata
-                EmbeddingIndex.objects.filter(is_active=True).update(is_active=False)
-                EmbeddingIndex.objects.create(
-                    index_file=self.index_path,
-                    dimension=self.dimension,
-                    total_vectors=len(chunk_mapping),
-                    is_active=True
-                )
-                
-                logger.info(f"Added {len(new_embeddings)} new embeddings to FAISS index")
-                
+            # Full rebuild is safest — avoids stale/duplicate chunk IDs accumulating
+            self.update_faiss_index()
         except Exception as e:
             logger.error(f"Error adding to FAISS index: {str(e)}")
-            # Fallback to full rebuild
-            self.update_faiss_index()
+            raise
 
     def search_similar_chunks(self, query_text, top_k=30, similarity_threshold=0.4):
         """Search for similar chunks using FAISS with improved accuracy"""
@@ -1482,9 +1437,8 @@ class ChatService:
             
         # Use Ollama for optimized model management
         self.ollama_client = ollama.Client()
-        self.model_name = "llama3:8b"
-        # self.model_name = "llama3.2:3b"
-        # self.model_name = "gemma2:2b"
+        # self.model_name = "llama3:8b"
+        self.model_name = "llama3.2:3b"
 
         
         # Test Ollama connection
@@ -1522,23 +1476,17 @@ class ChatService:
             logger.error(f"Error testing Ollama model: {str(e)}")
             raise
 
-    def get_relevant_context(self, query: str, top_k: int = 50) -> str:
+    # Max context chars to send to LLM - keeps prompt eval under 3s on T1000
+    _MAX_CONTEXT_CHARS = 2000
+
+    def get_relevant_context(self, query: str, top_k: int = 3) -> str:
         """Retrieve relevant context from documents using RAG"""
         try:
             similar_chunks = self.embedding_service.search_similar_chunks(query, top_k=top_k)
-            
             if not similar_chunks:
                 logger.info("No relevant chunks found")
                 return ""
-            
-            context_parts = []
-            for chunk_data in similar_chunks:
-                chunk = chunk_data['chunk']
-                # Don't include document labels - just the content
-                context_parts.append(chunk.content)
-            
-            logger.info(f"Found {len(similar_chunks)} relevant chunks for context")
-            return "\n\n".join(context_parts)
+            return self._truncate_context(similar_chunks)
         except Exception as e:
             logger.error(f"Error retrieving context: {str(e)}")
             return ""
@@ -1548,330 +1496,95 @@ class ChatService:
         try:
             if not similar_chunks:
                 return ""
-            context_parts = []
-            for chunk_data in similar_chunks:
-                chunk = chunk_data['chunk']
-                # Don't include document labels - just the content
-                context_parts.append(chunk.content)
-            return "\n\n".join(context_parts)
+            return self._truncate_context(similar_chunks)
         except Exception as e:
             logger.warning(f"Error formatting context from chunks: {e}")
             return ""
+
+    def _truncate_context(self, similar_chunks) -> str:
+        """Build context string, truncating to _MAX_CONTEXT_CHARS to keep prompt eval fast."""
+        context_parts = []
+        total = 0
+        for chunk_data in similar_chunks:
+            content = chunk_data['chunk'].content
+            if total + len(content) > self._MAX_CONTEXT_CHARS:
+                remaining = self._MAX_CONTEXT_CHARS - total
+                if remaining > 200:
+                    context_parts.append(content[:remaining])
+                break
+            context_parts.append(content)
+            total += len(content)
+        logger.info(f"Context: {len(context_parts)} chunks, {sum(len(p) for p in context_parts)} chars")
+        return "\n\n".join(context_parts)
     
+    _SYSTEM_PROMPT = """You answer questions about the NYC DOHMH Community Engagement Framework (May 2017).
+Rules:
+- Use ONLY the provided CONTEXT. If the answer is not there, say so.
+- Be concise. Answer in 2-4 short paragraphs maximum.
+- Be practical and concrete. Show how to apply framework principles.
+- Do NOT invent requirements, mandates, budgets, or statistics not in the framework.
+- Use suggestive language: "You could...", "Consider...", "The framework recommends..."
+- Format response as clean HTML: use <h3>, <p>, <ul><li>, <strong> tags.
+- NEVER use markdown (* or **), only HTML tags.
+- Do NOT say "The document says" or "According to the framework".
+- Do NOT repeat the user's question."""
+
     def generate_response(self, messages, similar_chunks=None):
         """Generate response with RAG (Retrieval-Augmented Generation)"""
         try:
             if not self.ollama_available:
                 self.load_model()
-            
+
             user_prompt = messages[-1].content
-            
+
             # Get relevant context from documents
             context = self._format_context_from_chunks(similar_chunks) if similar_chunks else self.get_relevant_context(user_prompt)
-            
+
             # Require KB context
             if not context:
                 return "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
-            FEW_SHOT_EXAMPLES = """
-<h3>ADDITIONAL EXAMPLES OF CORRECT RESPONSES</h3>
 
-<h4>Question:</h4>
-<p>What training programs are available for staff learning this framework?</p>
-<h4>Answer:</h4>
-<p>The framework doesn't specify particular training programs that are currently available. It mentions that the Community Engagement Workgroup made recommendations for "a process to train staff in the use of the framework and indicators," but doesn't detail what training was ultimately implemented.</p>
-<p>For information about current training opportunities, you could contact NYC DOHMH directly or check their staff development resources.</p>
-
-<h4>Question:</h4>
-<p>Who is the current Commissioner of Health in NYC?</p>
-<h4>Answer:</h4>
-<p>According to the framework document published in May 2017, Dr. Mary T. Bassett was the Commissioner of Health at that time. However, I cannot confirm who the current Commissioner is, as that information would be outside the framework. You can find current leadership information at <a href="https://www.nyc.gov/health">nyc.gov/health</a>.</p>
-
-<h4>Question:</h4>
-<p>How does community engagement relate to social determinants of health?</p>
-<h4>Answer:</h4>
-<p>The framework doesn't use the term "social determinants of health" specifically, but it emphasizes that advancing health equity requires identifying "the underlying social and systemic injustices that drive health inequities" and designing strategies to change these systems.</p>
-<p>It states that optimal health for all is not yet a reality because "some are unfairly disadvantaged by social conditions and systems, while others are unfairly advantaged." This aligns with addressing social determinants, though the framework focuses on community engagement as a strategy to address these systemic issues.</p>
-
-<h4>Question:</h4>
-<p>What are best practices for community engagement during COVID-19?</p>
-<h4>Answer:</h4>
-<p>The framework doesn't provide information about COVID-19.</p>
-"""
-
-          
-            # System prompt for clean, structured answers
-            system_prompt = """
-<system_instructions>
-You are a helpful assistant that answers questions about the NYC Department of Health and Mental Hygiene's Community Engagement Framework document (published May 2017). Follow the instructions below strictly.
-
-<h3>RESPONSE APPROACH</h3>
-
-<h4>1. BE PRACTICAL AND CONCRETE</h4>
-<ul>
-  <li>This framework is designed to guide real public health work</li>
-  <li>Provide specific, actionable examples of how to apply framework principles</li>
-  <li>Show what abstract concepts look like in practice</li>
-  <li>Help users understand how to actually use the framework</li>
-</ul>
-
-<h4>2. GROUND EVERYTHING IN THE FRAMEWORK</h4>
-<ul>
-  <li>Every suggestion should trace back to principles, methods, or guidance in the document</li>
-  <li>When framework says "go to the community" → Show concrete examples (community centers, faith spaces, schools)</li>
-  <li>When framework says "partner with faith-based organizations" → That's explicitly mentioned, use it</li>
-  <li>When framework describes "outreach" → Explain what an outreach campaign includes</li>
-  <li>When framework discusses "infectious disease outbreaks" → Apply to COVID, flu, measles, etc.</li>
-</ul>
-
-<h4>3. THOUGHTFUL APPLICATION IS ENCOURAGED</h4>
-<p><strong>Appropriate applications include:</strong></p>
-<ul>
-  <li>Framework describes "outreach for infectious disease outbreak" → Apply to COVID vaccination</li>
-  <li>Framework says "linguistically appropriate materials" → Suggest multilingual resources</li>
-  <li>Framework mentions "partner with faith-based organizations" → Suggest churches, mosques, temples</li>
-  <li>Framework describes "shared leadership" → Explain what that looks like in specific contexts</li>
-  <li>Framework lists "focus groups, surveys, listening sessions" → Describe how to use these</li>
-</ul>
-
-<h4>4. DON'T INVENT REQUIREMENTS OR MANDATES</h4>
-<p><strong>Do NOT do the following:</strong></p>
-<ul>
-  <li>Don't specify required budget percentages not in framework ("must allocate 20%")</li>
-  <li>Don't create mandatory timelines not specified ("requires 6 months minimum")</li>
-  <li>Don't invent approval processes not mentioned ("needs Deputy Commissioner sign-off")</li>
-  <li>Don't fabricate specific statistics or research findings</li>
-  <li>Don't claim "the Health Department requires..." anything not explicitly stated</li>
-</ul>
-
-<h4>5. ACKNOWLEDGE TRUE LIMITATIONS</h4>
-<p><strong>For questions about information truly not in framework:</strong></p>
-<ul>
-  <li>Current events after 2017 (current Commissioner, what happened after publication)</li>
-  <li>Specific budgets, programs, or initiatives not mentioned</li>
-  <li>Organizational policies or procedures not detailed</li>
-</ul>
-<p><strong>Response format:</strong></p>
-<ul>
-  <li>Lead with: "The framework doesn't provide information about [X]..."</li>
-  <li>Then redirect to what the framework DOES offer that's relevant</li>
-</ul>
-
-<h4>6. USE APPROPRIATE LANGUAGE</h4>
-<p><strong>Recommended phrasing:</strong></p>
-<ul>
-  <li>"You could..." / "You might..." / "Consider..." / "Approaches include..."</li>
-  <li>"The framework recommends..." / "The framework emphasizes..."</li>
-  <li>"This principle suggests..." / "Based on the framework's guidance..."</li>
-</ul>
-<p><strong>Avoid unless explicitly stated in framework:</strong></p>
-<ul>
-  <li>"You must..." / "It's required..." / "Policy mandates..."</li>
-</ul>
-
-<h3>THE KEY DISTINCTION</h3>
-<ul>
-  <li><strong>Good (applying framework with concrete examples):</strong> "Partner with churches to host vaccine events" — This applies framework guidance with concrete example</li>
-  <li><strong>Bad (inventing requirements):</strong> "You must establish 3 advisory boards before proceeding" — Inventing specific requirement</li>
-</ul>
-
-<h3>HTML FORMATTING RULES — STRICTLY ENFORCED</h3>
-
-<h4>Critical Formatting Requirements</h4>
-<ul>
-  <li>Use <code>&lt;h3&gt;</code> for section headings</li>
-  <li>Use <code>&lt;p&gt;</code> for all narrative content and paragraphs</li>
-  <li><strong>NEVER use asterisks (*), bullets (-), or markdown formatting</strong></li>
-  <li><strong>NEVER use double asterisks (**) for bold</strong> — Use <code>&lt;strong&gt;</code> tags instead</li>
-  <li>No markdown, no plain text — valid, well-formed HTML only</li>
-  <li>ALWAYS ensure every opening tag has a matching closing tag</li>
-  <li>Do NOT include phrases like "The document says" or "According to the framework"</li>
-  <li>Do NOT repeat or rephrase the user's question</li>
-  <li>Do NOT use Q&A formatting unless it appears in the framework</li>
-</ul>
-
-<h4>List Formatting — Use ONLY These Formats</h4>
-<p><strong>For lists of items with descriptions, use ONLY one of these two formats:</strong></p>
-
-<p><strong>Format 1 (Bullet List with Strong Tags):</strong></p>
-<pre><code>&lt;ul&gt;
-  &lt;li&gt;&lt;strong&gt;Item Name:&lt;/strong&gt; Description text here.&lt;/li&gt;
-  &lt;li&gt;&lt;strong&gt;Another Item:&lt;/strong&gt; More description text.&lt;/li&gt;
-&lt;/ul&gt;</code></pre>
-
-<p><strong>Format 2 (Paragraph Format with Strong Tags):</strong></p>
-<pre><code>&lt;p&gt;&lt;strong&gt;Item Name:&lt;/strong&gt; Description text here.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Another Item:&lt;/strong&gt; More description text.&lt;/p&gt;</code></pre>
-
-<h4>WRONG Formats — NEVER Use These</h4>
-<ul>
-  <li><strong>WRONG:</strong> <code>* &lt;strong&gt;Term:&lt;/strong&gt; Description</code> (asterisk before HTML tag)</li>
-  <li><strong>WRONG:</strong> <code>** Term:** Description</code> (markdown-style asterisks)</li>
-  <li><strong>WRONG:</strong> <code>&lt;p&gt;Term&lt;/p&gt;: Description</code> (closing tag followed by colon)</li>
-  <li><strong>WRONG:</strong> <code>- &lt;p&gt;Term&lt;/p&gt;:</code> (mixing bullets with HTML tags)</li>
-  <li><strong>WRONG:</strong> <code>* Term:** Description</code> (mixing asterisks with colons)</li>
-  <li><strong>WRONG:</strong> Any combination of markdown and HTML</li>
-</ul>
-
-<h4>Examples of Correct vs Incorrect Formatting</h4>
-
-<p><strong>✅ CORRECT — Bullet List Format:</strong></p>
-<pre><code>&lt;ul&gt;
-  &lt;li&gt;&lt;strong&gt;Outreach:&lt;/strong&gt; Conduct vigorous outreach campaigns to inform communities most likely to be affected.&lt;/li&gt;
-  &lt;li&gt;&lt;strong&gt;Transparency:&lt;/strong&gt; Use widely available platforms to disseminate information and be consistent in communication.&lt;/li&gt;
-&lt;/ul&gt;</code></pre>
-
-<p><strong>✅ CORRECT — Paragraph Format:</strong></p>
-<pre><code>&lt;p&gt;&lt;strong&gt;Outreach:&lt;/strong&gt; Conduct vigorous outreach campaigns to inform communities most likely to be affected.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Transparency:&lt;/strong&gt; Use widely available platforms to disseminate information and be consistent in communication.&lt;/p&gt;</code></pre>
-
-<p><strong>❌ WRONG — Markdown Mixed with HTML:</strong></p>
-<pre><code>* &lt;strong&gt;Outreach:&lt;/strong&gt; Conduct vigorous outreach campaigns...
-** Transparency:** Use widely available platforms...</code></pre>
-
-<p><strong>❌ WRONG — Malformed HTML:</strong></p>
-<pre><code>&lt;p&gt;Outreach&lt;/p&gt;: Conduct vigorous outreach campaigns...
-- &lt;p&gt;Transparency&lt;/p&gt;: Use widely available platforms...</code></pre>
-
-<h3>EXAMPLES OF PROPERLY FORMATTED RESPONSES</h3>
-
-<h4>Example 1: COVID Vaccination Engagement</h4>
-<p><strong>Question:</strong> "How do we engage communities for COVID vaccination?"</p>
-
-<p>The framework provides guidance for infectious disease outbreaks that applies directly to COVID vaccination. It recommends using outreach for rapid information dissemination. Here's how to apply it:</p>
-
-<p><strong>Go to the community:</strong> Set up vaccination sites in neighborhoods, community centers, faith spaces rather than only central locations. The framework emphasizes going to where people are rather than expecting them to come to you.</p>
-
-<p><strong>Use trusted messengers:</strong> Partner with community health workers, faith leaders, and local organizations. The framework explicitly mentions partnering with faith-based organizations and community-based organizations.</p>
-
-<p><strong>Ensure accessibility:</strong> Create multilingual materials and use interpretation services. The framework emphasizes linguistically appropriate communication.</p>
-
-<p><strong>Build on existing networks:</strong> Leverage relationships with schools, churches, community groups. The framework recommends building diverse partnerships across sectors.</p>
-
-<p><strong>Include community voice:</strong> Use focus groups and listening sessions to understand vaccine concerns and barriers. The framework describes these as consultation methods.</p>
-
-<p>The core principles of transparency, equity, and prioritizing communities most affected by health inequities should guide your vaccination efforts.</p>
-
-<h4>Example 2: Shared Leadership in Housing Advocacy</h4>
-<p><strong>Question:</strong> "What would shared leadership look like for housing advocacy?"</p>
-
-<p>Based on the framework's description of shared leadership, here's what it would include in a housing advocacy context:</p>
-
-<p><strong>Equal representation:</strong> Residents experiencing housing issues have equal voice in decision-making alongside agencies and organizations. The framework describes stakeholders being "represented equally in the partnership."</p>
-
-<p><strong>Consensus-driven:</strong> Strategic decisions are made jointly, not by the agency alone. This means community members help define what the housing problem is and what solutions to pursue.</p>
-
-<p><strong>Shared accountability:</strong> All parties—residents, community organizations, government agencies—take responsibility for outcomes together.</p>
-
-<p><strong>Flexible leadership:</strong> The health department or lead agency may support initiatives that residents or community organizations lead, rather than always being in charge.</p>
-
-<p><strong>Resource sharing:</strong> Ensure community members have the knowledge, resources, and support needed to participate fully in leadership roles.</p>
-
-<p>The framework notes this approach takes significant time and resources, requires flexibility about how problems are identified, and works best for broad issues where people with varying backgrounds can meaningfully participate.</p>
-
-<h4>Example 3: Out of Scope Question</h4>
-<p><strong>Question:</strong> "Who is the current NYC Health Commissioner?"</p>
-
-<p>The framework document was published in May 2017 under Commissioner Dr. Mary T. Bassett's leadership. I cannot confirm who the current Commissioner is as that information would be outside this document. You can find current leadership information at nyc.gov/health.</p>
-
-<h4>Example 4: Best Practices for Community Engagement</h4>
-<p><strong>Question:</strong> "What are best practices for community engagement during COVID-19?"</p>
-
-<p>The framework emphasizes the importance of community engagement, particularly during public health crises like the COVID-19 pandemic.</p>
-
-<p><strong>Outreach:</strong> Conduct vigorous outreach campaigns to inform communities most likely to be affected by the outbreak and medical providers who serve those communities. This unidirectional flow of information aims to establish communication channels for outreach and community involvement.</p>
-
-<p><strong>Bidirectional Communication:</strong> In situations like consultations, engage in bidirectional communication with specific communities or stakeholders. This approach fosters a two-way exchange of information, ideas, and feedback.</p>
-
-<p>When engaging communities during the pandemic, it is essential to:</p>
-
-<ul>
-  <li><strong>Be Clear:</strong> Define the purpose, goals, and desired outcomes of community engagement efforts.</li>
-  <li><strong>Identify Stakeholders:</strong> Determine who is most affected by the crisis and involve them in decision-making processes. This includes individuals or groups responsible for addressing the issue, as well as institutions with the power to make decisions.</li>
-</ul>
-
-<p>The framework also highlights the importance of:</p>
-
-<ul>
-  <li><strong>Transparency:</strong> Use widely available platforms to disseminate information and be consistent in communication. Ensure linguistically-appropriate language and honesty about intentions and outcomes.</li>
-  <li><strong>Inclusivity:</strong> Engage a diverse spectrum of community stakeholders and partners, including City agencies, community-based organizations, faith-based organizations, private sector businesses, and academic institutions.</li>
-  <li><strong>Go to the community:</strong> Build relationships with community leaders and work together to lay the groundwork for future collaborations.</li>
-  <li><strong>Be flexible:</strong> Be open to reassessing processes throughout, recognizing that no external entity can bestow power on a group to act. Honor self-determination in all communities.</li>
-</ul>
-
-<p>The framework also emphasizes shared leadership during emergency situations, which involves strong relationships built on trust, reciprocity, and consensus-driven decision-making among community stakeholders and health department staff.</p>
-
-<p>By following these best practices for community engagement during the COVID-19 pandemic, you can foster trust, build relationships, and promote effective communication with communities affected by the crisis.</p>
-
-<h3>PRE-RESPONSE CHECKLIST</h3>
-<p><strong>Before sending ANY response, verify:</strong></p>
-<ul>
-  <li>✅ No asterisks (*) or double asterisks (**) anywhere in the response</li>
-  <li>✅ No markdown-style bullets (-) or numbered lists (1., 2., 3.)</li>
-    <li>✅ No Colon (:)</li>
-
-  <li>✅ All bold text uses <code>&lt;strong&gt;</code> tags, not **text**</li>
-  <li>✅ All lists use proper <code>&lt;ul&gt;&lt;li&gt;</code> or <code>&lt;p&gt;</code> tags</li>
-  <li>✅ No orphaned colons after closing tags (e.g., <code>&lt;/p&gt;:</code>)</li>
-  <li>✅ All opening tags have matching closing tags</li>
-  <li>✅ Content is grounded in the framework with practical application</li>
-  <li>✅ No invented requirements, mandates, or statistics</li>
-  <li>✅ No phrases like "The document says" or "According to the framework"</li>
-  <li>✅ No Q&A formatting unless in the framework</li>
-</ul>
-
-<h3>SUMMARY</h3>
-<p>Remember: Be helpful, concrete, and practical. Show users how to USE the framework, not just describe it abstractly. But don't invent requirements, mandates, or specific organizational policies not in the document. Always format responses in proper, well-formed HTML with absolutely NO markdown or asterisks.</p>
-</system_instructions>
- 
-"""
-            system_prompt = system_prompt + "\n\n" + FEW_SHOT_EXAMPLES
-            user_message = f"""CONTEXT (the ONLY information you can use):
-
+            user_message = f"""CONTEXT:
 {context}
 
-USER QUESTION: {user_prompt}
+QUESTION: {user_prompt}
 
-Provide a clear, well-structured HTML answer using ONLY the CONTEXT above. If the answer is not in the CONTEXT, respond exactly: "I could not find that information in the knowledge base."
-
-Do NOT mention "Document", "Content", or any source references. Write naturally as if stating facts."""
+Answer in well-formed HTML using only the context above."""
 
             # Generate response using Ollama
             response = self.ollama_client.chat(
                 model=self.model_name,
                 messages=[
-                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'system', 'content': self._SYSTEM_PROMPT},
                     {'role': 'user', 'content': user_message}
                 ],
                 stream=False,
                 options={
-        'temperature': 0.3,        # Slightly higher to allow better synthesis while staying grounded
-        'top_p': 0.9,              # Allow more token diversity for better synthesis
-        'top_k': 60,               # Slightly more vocabulary options
-        'repeat_penalty': 1.15,    # Encourage variety in expression
-        'num_ctx': 8192,           # Larger context window to fit more chunks
-        'num_predict': 768         # Allow longer, more complete responses
-    }
+                    'temperature': 0.3,
+                    'top_p': 0.85,
+                    'top_k': 40,
+                    'repeat_penalty': 1.1,
+                    'num_ctx': 2048,
+                    'num_predict': 256
+                }
             )
-            
+
             generated_text = response['message']['content'].strip()
-            
-            # Skip post-processing since we're now using HTML format
-            # generated_text = post_process_response(generated_text)
-            
+
             if not generated_text:
                 return "I'm here to help! How can I assist you today?"
-            
+
             # Validate response before returning
             is_valid, warnings = validate_chatbot_response(generated_text, user_prompt)
             if warnings:
                 logger.warning(f"Response validation warnings for question '{user_prompt[:100]}...': {warnings}")
-                
+
             return generated_text
 
         except Exception as e:
             logger.error(f"Error generating response with Ollama: {str(e)}")
             return "I'm sorry, there was an error processing your request."
-    
+
     def generate_response_stream(self, messages, similar_chunks=None) -> Generator[str, None, None]:
         """Generate streaming response with RAG using Ollama backend"""
         try:
@@ -1887,296 +1600,35 @@ Do NOT mention "Document", "Content", or any source references. Write naturally 
             if not context:
                 yield "I could not find information in the knowledge base about that. Please rephrase or upload relevant documents."
                 return
-             
-            # System prompt for clean HTML responses with better formatting
-            FEW_SHOT_EXAMPLES = """
-<h3>ADDITIONAL EXAMPLES OF CORRECT RESPONSES</h3>
 
-<h4>Question:</h4>
-<p>What training programs are available for staff learning this framework?</p>
-<h4>Answer:</h4>
-<p>The framework doesn't specify particular training programs that are currently available. It mentions that the Community Engagement Workgroup made recommendations for "a process to train staff in the use of the framework and indicators," but doesn't detail what training was ultimately implemented.</p>
-<p>For information about current training opportunities, you could contact NYC DOHMH directly or check their staff development resources.</p>
-
-<h4>Question:</h4>
-<p>Who is the current Commissioner of Health in NYC?</p>
-<h4>Answer:</h4>
-<p>According to the framework document published in May 2017, Dr. Mary T. Bassett was the Commissioner of Health at that time. However, I cannot confirm who the current Commissioner is, as that information would be outside the framework. You can find current leadership information at <a href="https://www.nyc.gov/health">nyc.gov/health</a>.</p>
-
-<h4>Question:</h4>
-<p>How does community engagement relate to social determinants of health?</p>
-<h4>Answer:</h4>
-<p>The framework doesn't use the term "social determinants of health" specifically, but it emphasizes that advancing health equity requires identifying "the underlying social and systemic injustices that drive health inequities" and designing strategies to change these systems.</p>
-<p>It states that optimal health for all is not yet a reality because "some are unfairly disadvantaged by social conditions and systems, while others are unfairly advantaged." This aligns with addressing social determinants, though the framework focuses on community engagement as a strategy to address these systemic issues.</p>
-
-<h4>Question:</h4>
-<p>What are best practices for community engagement during COVID-19?</p>
-<h4>Answer:</h4>
-<p>The framework doesn't provide information about COVID-19.</p>
-"""
-
-          
-            # System prompt for clean, structured answers
-            system_prompt = """
-<system_instructions>
-You are a helpful assistant that answers questions about the NYC Department of Health and Mental Hygiene's Community Engagement Framework document (published May 2017). Follow the instructions below strictly.
-
-<h3>RESPONSE APPROACH</h3>
-
-<h4>1. BE PRACTICAL AND CONCRETE</h4>
-<ul>
-  <li>This framework is designed to guide real public health work</li>
-  <li>Provide specific, actionable examples of how to apply framework principles</li>
-  <li>Show what abstract concepts look like in practice</li>
-  <li>Help users understand how to actually use the framework</li>
-</ul>
-
-<h4>2. GROUND EVERYTHING IN THE FRAMEWORK</h4>
-<ul>
-  <li>Every suggestion should trace back to principles, methods, or guidance in the document</li>
-  <li>When framework says "go to the community" → Show concrete examples (community centers, faith spaces, schools)</li>
-  <li>When framework says "partner with faith-based organizations" → That's explicitly mentioned, use it</li>
-  <li>When framework describes "outreach" → Explain what an outreach campaign includes</li>
-  <li>When framework discusses "infectious disease outbreaks" → Apply to COVID, flu, measles, etc.</li>
-</ul>
-
-<h4>3. THOUGHTFUL APPLICATION IS ENCOURAGED</h4>
-<p><strong>Appropriate applications include:</strong></p>
-<ul>
-  <li>Framework describes "outreach for infectious disease outbreak" → Apply to COVID vaccination</li>
-  <li>Framework says "linguistically appropriate materials" → Suggest multilingual resources</li>
-  <li>Framework mentions "partner with faith-based organizations" → Suggest churches, mosques, temples</li>
-  <li>Framework describes "shared leadership" → Explain what that looks like in specific contexts</li>
-  <li>Framework lists "focus groups, surveys, listening sessions" → Describe how to use these</li>
-</ul>
-
-<h4>4. DON'T INVENT REQUIREMENTS OR MANDATES</h4>
-<p><strong>Do NOT do the following:</strong></p>
-<ul>
-  <li>Don't specify required budget percentages not in framework ("must allocate 20%")</li>
-  <li>Don't create mandatory timelines not specified ("requires 6 months minimum")</li>
-  <li>Don't invent approval processes not mentioned ("needs Deputy Commissioner sign-off")</li>
-  <li>Don't fabricate specific statistics or research findings</li>
-  <li>Don't claim "the Health Department requires..." anything not explicitly stated</li>
-</ul>
-
-<h4>5. ACKNOWLEDGE TRUE LIMITATIONS</h4>
-<p><strong>For questions about information truly not in framework:</strong></p>
-<ul>
-  <li>Current events after 2017 (current Commissioner, what happened after publication)</li>
-  <li>Specific budgets, programs, or initiatives not mentioned</li>
-  <li>Organizational policies or procedures not detailed</li>
-</ul>
-<p><strong>Response format:</strong></p>
-<ul>
-  <li>Lead with: "The framework doesn't provide information about [X]..."</li>
-  <li>Then redirect to what the framework DOES offer that's relevant</li>
-</ul>
-
-<h4>6. USE APPROPRIATE LANGUAGE</h4>
-<p><strong>Recommended phrasing:</strong></p>
-<ul>
-  <li>"You could..." / "You might..." / "Consider..." / "Approaches include..."</li>
-  <li>"The framework recommends..." / "The framework emphasizes..."</li>
-  <li>"This principle suggests..." / "Based on the framework's guidance..."</li>
-</ul>
-<p><strong>Avoid unless explicitly stated in framework:</strong></p>
-<ul>
-  <li>"You must..." / "It's required..." / "Policy mandates..."</li>
-</ul>
-
-<h3>THE KEY DISTINCTION</h3>
-<ul>
-  <li><strong>Good (applying framework with concrete examples):</strong> "Partner with churches to host vaccine events" — This applies framework guidance with concrete example</li>
-  <li><strong>Bad (inventing requirements):</strong> "You must establish 3 advisory boards before proceeding" — Inventing specific requirement</li>
-</ul>
-
-<h3>HTML FORMATTING RULES — STRICTLY ENFORCED</h3>
-
-<h4>Critical Formatting Requirements</h4>
-<ul>
-  <li>Use <code>&lt;h3&gt;</code> for section headings</li>
-  <li>Use <code>&lt;p&gt;</code> for all narrative content and paragraphs</li>
-  <li><strong>NEVER use asterisks (*), bullets (-), or markdown formatting</strong></li>
-  <li><strong>NEVER use double asterisks (**) for bold</strong> — Use <code>&lt;strong&gt;</code> tags instead</li>
-  <li>No markdown, no plain text — valid, well-formed HTML only</li>
-  <li>ALWAYS ensure every opening tag has a matching closing tag</li>
-  <li>Do NOT include phrases like "The document says" or "According to the framework"</li>
-  <li>Do NOT repeat or rephrase the user's question</li>
-  <li>Do NOT use Q&A formatting unless it appears in the framework</li>
-</ul>
-
-<h4>List Formatting — Use ONLY These Formats</h4>
-<p><strong>For lists of items with descriptions, use ONLY one of these two formats:</strong></p>
-
-<p><strong>Format 1 (Bullet List with Strong Tags):</strong></p>
-<pre><code>&lt;ul&gt;
-  &lt;li&gt;&lt;strong&gt;Item Name:&lt;/strong&gt; Description text here.&lt;/li&gt;
-  &lt;li&gt;&lt;strong&gt;Another Item:&lt;/strong&gt; More description text.&lt;/li&gt;
-&lt;/ul&gt;</code></pre>
-
-<p><strong>Format 2 (Paragraph Format with Strong Tags):</strong></p>
-<pre><code>&lt;p&gt;&lt;strong&gt;Item Name:&lt;/strong&gt; Description text here.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Another Item:&lt;/strong&gt; More description text.&lt;/p&gt;</code></pre>
-
-<h4>WRONG Formats — NEVER Use These</h4>
-<ul>
-  <li><strong>WRONG:</strong> <code>* &lt;strong&gt;Term:&lt;/strong&gt; Description</code> (asterisk before HTML tag)</li>
-  <li><strong>WRONG:</strong> <code>** Term:** Description</code> (markdown-style asterisks)</li>
-  <li><strong>WRONG:</strong> <code>&lt;p&gt;Term&lt;/p&gt;: Description</code> (closing tag followed by colon)</li>
-  <li><strong>WRONG:</strong> <code>- &lt;p&gt;Term&lt;/p&gt;:</code> (mixing bullets with HTML tags)</li>
-  <li><strong>WRONG:</strong> <code>* Term:** Description</code> (mixing asterisks with colons)</li>
-  <li><strong>WRONG:</strong> Any combination of markdown and HTML</li>
-</ul>
-
-<h4>Examples of Correct vs Incorrect Formatting</h4>
-
-<p><strong>✅ CORRECT — Bullet List Format:</strong></p>
-<pre><code>&lt;ul&gt;
-  &lt;li&gt;&lt;strong&gt;Outreach:&lt;/strong&gt; Conduct vigorous outreach campaigns to inform communities most likely to be affected.&lt;/li&gt;
-  &lt;li&gt;&lt;strong&gt;Transparency:&lt;/strong&gt; Use widely available platforms to disseminate information and be consistent in communication.&lt;/li&gt;
-&lt;/ul&gt;</code></pre>
-
-<p><strong>✅ CORRECT — Paragraph Format:</strong></p>
-<pre><code>&lt;p&gt;&lt;strong&gt;Outreach:&lt;/strong&gt; Conduct vigorous outreach campaigns to inform communities most likely to be affected.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Transparency:&lt;/strong&gt; Use widely available platforms to disseminate information and be consistent in communication.&lt;/p&gt;</code></pre>
-
-<p><strong>❌ WRONG — Markdown Mixed with HTML:</strong></p>
-<pre><code>* &lt;strong&gt;Outreach:&lt;/strong&gt; Conduct vigorous outreach campaigns...
-** Transparency:** Use widely available platforms...</code></pre>
-
-<p><strong>❌ WRONG — Malformed HTML:</strong></p>
-<pre><code>&lt;p&gt;Outreach&lt;/p&gt;: Conduct vigorous outreach campaigns...
-- &lt;p&gt;Transparency&lt;/p&gt;: Use widely available platforms...</code></pre>
-
-<h3>EXAMPLES OF PROPERLY FORMATTED RESPONSES</h3>
-
-<h4>Example 1: COVID Vaccination Engagement</h4>
-<p><strong>Question:</strong> "How do we engage communities for COVID vaccination?"</p>
-
-<p>The framework provides guidance for infectious disease outbreaks that applies directly to COVID vaccination. It recommends using outreach for rapid information dissemination. Here's how to apply it:</p>
-
-<p><strong>Go to the community:</strong> Set up vaccination sites in neighborhoods, community centers, faith spaces rather than only central locations. The framework emphasizes going to where people are rather than expecting them to come to you.</p>
-
-<p><strong>Use trusted messengers:</strong> Partner with community health workers, faith leaders, and local organizations. The framework explicitly mentions partnering with faith-based organizations and community-based organizations.</p>
-
-<p><strong>Ensure accessibility:</strong> Create multilingual materials and use interpretation services. The framework emphasizes linguistically appropriate communication.</p>
-
-<p><strong>Build on existing networks:</strong> Leverage relationships with schools, churches, community groups. The framework recommends building diverse partnerships across sectors.</p>
-
-<p><strong>Include community voice:</strong> Use focus groups and listening sessions to understand vaccine concerns and barriers. The framework describes these as consultation methods.</p>
-
-<p>The core principles of transparency, equity, and prioritizing communities most affected by health inequities should guide your vaccination efforts.</p>
-
-<h4>Example 2: Shared Leadership in Housing Advocacy</h4>
-<p><strong>Question:</strong> "What would shared leadership look like for housing advocacy?"</p>
-
-<p>Based on the framework's description of shared leadership, here's what it would include in a housing advocacy context:</p>
-
-<p><strong>Equal representation:</strong> Residents experiencing housing issues have equal voice in decision-making alongside agencies and organizations. The framework describes stakeholders being "represented equally in the partnership."</p>
-
-<p><strong>Consensus-driven:</strong> Strategic decisions are made jointly, not by the agency alone. This means community members help define what the housing problem is and what solutions to pursue.</p>
-
-<p><strong>Shared accountability:</strong> All parties—residents, community organizations, government agencies—take responsibility for outcomes together.</p>
-
-<p><strong>Flexible leadership:</strong> The health department or lead agency may support initiatives that residents or community organizations lead, rather than always being in charge.</p>
-
-<p><strong>Resource sharing:</strong> Ensure community members have the knowledge, resources, and support needed to participate fully in leadership roles.</p>
-
-<p>The framework notes this approach takes significant time and resources, requires flexibility about how problems are identified, and works best for broad issues where people with varying backgrounds can meaningfully participate.</p>
-
-<h4>Example 3: Out of Scope Question</h4>
-<p><strong>Question:</strong> "Who is the current NYC Health Commissioner?"</p>
-
-<p>The framework document was published in May 2017 under Commissioner Dr. Mary T. Bassett's leadership. I cannot confirm who the current Commissioner is as that information would be outside this document. You can find current leadership information at nyc.gov/health.</p>
-
-<h4>Example 4: Best Practices for Community Engagement</h4>
-<p><strong>Question:</strong> "What are best practices for community engagement during COVID-19?"</p>
-
-<p>The framework emphasizes the importance of community engagement, particularly during public health crises like the COVID-19 pandemic.</p>
-
-<p><strong>Outreach:</strong> Conduct vigorous outreach campaigns to inform communities most likely to be affected by the outbreak and medical providers who serve those communities. This unidirectional flow of information aims to establish communication channels for outreach and community involvement.</p>
-
-<p><strong>Bidirectional Communication:</strong> In situations like consultations, engage in bidirectional communication with specific communities or stakeholders. This approach fosters a two-way exchange of information, ideas, and feedback.</p>
-
-<p>When engaging communities during the pandemic, it is essential to:</p>
-
-<ul>
-  <li><strong>Be Clear:</strong> Define the purpose, goals, and desired outcomes of community engagement efforts.</li>
-  <li><strong>Identify Stakeholders:</strong> Determine who is most affected by the crisis and involve them in decision-making processes. This includes individuals or groups responsible for addressing the issue, as well as institutions with the power to make decisions.</li>
-</ul>
-
-<p>The framework also highlights the importance of:</p>
-
-<ul>
-  <li><strong>Transparency:</strong> Use widely available platforms to disseminate information and be consistent in communication. Ensure linguistically-appropriate language and honesty about intentions and outcomes.</li>
-  <li><strong>Inclusivity:</strong> Engage a diverse spectrum of community stakeholders and partners, including City agencies, community-based organizations, faith-based organizations, private sector businesses, and academic institutions.</li>
-  <li><strong>Go to the community:</strong> Build relationships with community leaders and work together to lay the groundwork for future collaborations.</li>
-  <li><strong>Be flexible:</strong> Be open to reassessing processes throughout, recognizing that no external entity can bestow power on a group to act. Honor self-determination in all communities.</li>
-</ul>
-
-<p>The framework also emphasizes shared leadership during emergency situations, which involves strong relationships built on trust, reciprocity, and consensus-driven decision-making among community stakeholders and health department staff.</p>
-
-<p>By following these best practices for community engagement during the COVID-19 pandemic, you can foster trust, build relationships, and promote effective communication with communities affected by the crisis.</p>
-
-<h3>PRE-RESPONSE CHECKLIST</h3>
-<p><strong>Before sending ANY response, verify:</strong></p>
-<ul>
-  <li>✅ No asterisks (*) or double asterisks (**) anywhere in the response</li>
-  <li>✅ No markdown-style bullets (-) or numbered lists (1., 2., 3.)</li>
-  <li>✅ No Colon (:)</li>
-  <li>✅ All bold text uses <code>&lt;strong&gt;</code> tags, not **text**</li>
-  <li>✅ All lists use proper <code>&lt;ul&gt;&lt;li&gt;</code> or <code>&lt;p&gt;</code> tags</li>
-  <li>✅ No orphaned colons after closing tags (e.g., <code>&lt;/p&gt;:</code>)</li>
-  <li>✅ All opening tags have matching closing tags</li>
-  <li>✅ Content is grounded in the framework with practical application</li>
-  <li>✅ No invented requirements, mandates, or statistics</li>
-  <li>✅ No phrases like "The document says" or "According to the framework"</li>
-  <li>✅ No Q&A formatting unless in the framework</li>
-</ul>
-
-<h3>SUMMARY</h3>
-<p>Remember: Be helpful, concrete, and practical. Show users how to USE the framework, not just describe it abstractly. But don't invent requirements, mandates, or specific organizational policies not in the document. Always format responses in proper, well-formed HTML with absolutely NO markdown or asterisks.</p>
-</system_instructions>
-"""
-            system_prompt=system_prompt + "\n\n" + FEW_SHOT_EXAMPLES
-
-
-            user_message = f"""CONTEXT (the ONLY information you can use):
-
+            user_message = f"""CONTEXT:
 {context}
 
-USER QUESTION: {user_prompt}
+QUESTION: {user_prompt}
 
-Provide a clear, well-structured HTML answer using ONLY the CONTEXT above. If the answer is not in the CONTEXT, respond exactly: "I could not find that information in the knowledge base."
+Answer in well-formed HTML using only the context above."""
 
-Do NOT mention "Document", "Content", or any source references. Write naturally as if stating facts."""
-
-            # Stream response using Ollama - yield tokens in REAL-TIME
+            # Stream response using Ollama
             response_stream = self.ollama_client.chat(
                 model=self.model_name,
                 messages=[
-                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'system', 'content': self._SYSTEM_PROMPT},
                     {'role': 'user', 'content': user_message}
                 ],
                 stream=True,
-               options={
-        'temperature': 0.3,        # Slightly higher to allow better synthesis while staying grounded
-        'top_p': 0.9,              # Allow more token diversity for better synthesis
-        'top_k': 60,               # Slightly more vocabulary options
-        'repeat_penalty': 1.15,    # Encourage variety in expression
-        'frequency_penalty':0.3,
-        'presence_penalty':0.2,
-        'num_ctx': 800,           # Larger context window to fit more chunks
-        'num_predict': 768         # Allow longer, more complete responses
-    }
+                options={
+                    'temperature': 0.3,
+                    'top_p': 0.85,
+                    'top_k': 40,
+                    'repeat_penalty': 1.1,
+                    'num_ctx': 2048,
+                    'num_predict': 256
+                }
             )
-            
-            # Stream tokens in real-time (don't collect first, stream directly!)
+
             for chunk in response_stream:
                 if chunk['message']['content']:
-                    token = chunk['message']['content']
-                    yield token
+                    yield chunk['message']['content']
 
         except Exception as e:
             logger.error(f"Error generating streaming response with Ollama: {str(e)}", exc_info=True)

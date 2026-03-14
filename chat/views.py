@@ -205,9 +205,9 @@ def send_message(request):
         try:
             # Use expanded search for better results, especially for comparative queries
             similar_chunks = embedding_service.search_similar_chunks_enhanced(
-                message_content, 
-                top_k=10,  # Increased from 3 to get more relevant content
-                similarity_threshold=0.3  # Lowered from 0.4 for broader results
+                message_content,
+                top_k=3,
+                similarity_threshold=0.3
             )
             logger.info(f"Found {len(similar_chunks)} similar chunks for query")
         except Exception as e:
@@ -215,8 +215,8 @@ def send_message(request):
             # Fallback to original method if enhanced search fails
             try:
                 similar_chunks = embedding_service.search_similar_chunks(
-                    message_content, 
-                    top_k=10,
+                    message_content,
+                    top_k=3,
                     similarity_threshold=0.3
                 )
                 logger.info(f"Fallback search found {len(similar_chunks)} similar chunks")
