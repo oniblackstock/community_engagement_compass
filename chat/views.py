@@ -739,7 +739,7 @@ def about_content(request):
         else:
             return JsonResponse({
                 'title': 'About Community Engagement Compass',
-                'content': '<p>Welcome to the Community Engagement Compass, a tool designed to support healthcare and public health professionals in applying trusted community engagement frameworks.</p>'
+                'content': '<p>Health Justice has built the Community Engagement Compass: a resource for community and for health organizations ready to do engagement differently, grounded in the conviction that community self-determination is the goal. And better outcomes follow.</p>'
             })
     except Exception as e:
         logger.error(f"Error fetching about content: {str(e)}")
@@ -761,14 +761,7 @@ def how_it_works_content(request):
         else:
             return JsonResponse({
                 'title': 'How It Works',
-                'content': '''
-                <ol>
-                    <li>Type a question about your uploaded documents or topics.</li>
-                    <li>Toggle "Enable streaming responses" to see tokens as they generate.</li>
-                    <li>Sources are listed under replies when available; click links to view.</li>
-                    <li>Use "New Chat" to start a fresh conversation thread.</li>
-                </ol>
-                '''
+                'content': '<p>The Community Engagement Compass is a practical, searchable resource designed to support community members and people working in public health, health care, and community organizations in their community engagement.</p>'
             })
     except Exception as e:
         logger.error(f"Error fetching how it works content: {str(e)}")
