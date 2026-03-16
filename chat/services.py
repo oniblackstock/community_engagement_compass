@@ -1061,8 +1061,32 @@ class EmbeddingService:
         self.dimension = 1024
         self.index_path = os.path.join(settings.MEDIA_ROOT, 'faiss_index.bin')
         self.mapping_path = os.path.join(settings.MEDIA_ROOT, 'chunk_mapping.pkl')
+        # Cache FAISS index and mapping in memory to avoid disk reads on every search
+        self._cached_index = None
+        self._cached_mapping = None
+        self._load_index_cache()
         self.initialized = True
         logger.info(f"Initialized EmbeddingService with BAAI/bge-large-en-v1.5 (dim={self.dimension})")
+
+    def _load_index_cache(self):
+        """Load FAISS index and chunk mapping into memory"""
+        try:
+            if os.path.exists(self.index_path) and os.path.exists(self.mapping_path):
+                self._cached_index = faiss.read_index(self.index_path)
+                with open(self.mapping_path, 'rb') as f:
+                    self._cached_mapping = pickle.load(f)
+                logger.info(f"Cached FAISS index with {len(self._cached_mapping)} vectors")
+        except Exception as e:
+            logger.warning(f"Could not cache FAISS index: {e}")
+            self._cached_index = None
+            self._cached_mapping = None
+
+    def _get_index_and_mapping(self):
+        """Return cached index and mapping, reloading from disk if needed"""
+        if self._cached_index is not None and self._cached_mapping is not None:
+            return self._cached_index, self._cached_mapping
+        self._load_index_cache()
+        return self._cached_index, self._cached_mapping
 
     def create_embedding(self, text):
         """Create embedding for given text with query prefix for BGE model"""
@@ -1116,11 +1140,13 @@ class EmbeddingService:
             )
 
             logger.info(f"Updated FAISS index with {len(embeddings)} vectors")
+            # Refresh in-memory cache
+            self._load_index_cache()
 
         except Exception as e:
             logger.error(f"Error updating FAISS index: {str(e)}")
             raise
-    
+
     def add_to_faiss_index(self, chunk_embeddings):
         """Add new embeddings to FAISS index. Does a full rebuild to avoid stale/duplicate entries."""
         try:
@@ -1135,16 +1161,8 @@ class EmbeddingService:
     def search_similar_chunks(self, query_text, top_k=30, similarity_threshold=0.4):
         """Search for similar chunks using FAISS with improved accuracy"""
         try:
-            if not os.path.exists(self.index_path) or not os.path.exists(self.mapping_path):
-                logger.warning("FAISS index not found - no documents have been processed yet")
-                return []
-
-            # Load index and mapping
-            index = faiss.read_index(self.index_path)
-            with open(self.mapping_path, 'rb') as f:
-                chunk_mapping = pickle.load(f)
-
-            if not chunk_mapping:
+            index, chunk_mapping = self._get_index_and_mapping()
+            if index is None or not chunk_mapping:
                 logger.warning("No chunks in mapping - index may be empty")
                 return []
 
@@ -1188,17 +1206,9 @@ class EmbeddingService:
     def search_similar_chunks_enhanced(self, query_text, top_k=40, similarity_threshold=0.3):
         """Enhanced search with query expansion for comparative queries and better results"""
         try:
-            if not os.path.exists(self.index_path) or not os.path.exists(self.mapping_path):
-                logger.warning("FAISS index not found - no documents have been processed yet")
-                return []
-
-            # Load index and mapping
-            index = faiss.read_index(self.index_path)
-            with open(self.mapping_path, 'rb') as f:
-                chunk_mapping = pickle.load(f)
-
-            if not chunk_mapping:
-                logger.warning("No chunks in mapping - index may be empty")
+            index, chunk_mapping = self._get_index_and_mapping()
+            if index is None or not chunk_mapping:
+                logger.warning("FAISS index not found or empty")
                 return []
 
             # Detect if this is a comparative query (contains "vs", "versus", "compared to", etc.)
@@ -1438,8 +1448,8 @@ class ChatService:
         # Use Ollama for optimized model management
         self.ollama_client = ollama.Client()
         # self.model_name = "llama3:8b"
-        self.model_name = "llama3.2:3b"
-
+        # self.model_name = "llama3.2:3b"
+        self.model_name = "llama3.2:1b"
         
         # Test Ollama connection
         try:
@@ -1477,7 +1487,7 @@ class ChatService:
             raise
 
     # Max context chars to send to LLM - keeps prompt eval under 3s on T1000
-    _MAX_CONTEXT_CHARS = 2000
+    _MAX_CONTEXT_CHARS = 1200
 
     def get_relevant_context(self, query: str, top_k: int = 3) -> str:
         """Retrieve relevant context from documents using RAG"""
@@ -1565,7 +1575,7 @@ Answer in well-formed HTML using only the context above."""
                     'top_k': 40,
                     'repeat_penalty': 1.1,
                     'num_ctx': 2048,
-                    'num_predict': 256
+                    'num_predict': 128
                 }
             )
 
@@ -1622,7 +1632,7 @@ Answer in well-formed HTML using only the context above."""
                     'top_k': 40,
                     'repeat_penalty': 1.1,
                     'num_ctx': 2048,
-                    'num_predict': 256
+                    'num_predict': 128
                 }
             )
 
