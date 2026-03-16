@@ -79,10 +79,13 @@
     </div>
     <div class="body">
       <p class="mb-3">
-        {% trans "We are testing this new resource, Community Engagement Compass, designed to support healthcare and public health professionals and organizations in applying trusted community engagement frameworks in their work." %}
+        {% trans "Compass is built for health professionals who want to build real partnerships with communities, and for community members and organizations that want to see that happen." %}
+      </p>
+      <p class="mb-3">
+        {% trans "Your feedback will help us improve this early version so it meets that goal." %}
       </p>
       <p class="mb-4">
-        {% trans "Your feedback will help us improve this proof-of-concept so it can better meet the needs of people and organizations working to advance health equity through community partnerships. The survey should take less than 2 minutes to complete. Thank you in advance for your time." %}
+        {% trans "The survey should take less than 2 minutes - and your input makes a real difference. Thank you!" %}
       </p>
 
       <form method="post" action="{% url 'chatbot:feedback' %}">
@@ -95,7 +98,7 @@
         {% endif %}
 
         <div class="mb-4">
-          <label class="form-label"><strong>{% trans "1. Ease of Use" %}</strong> <span class="text-muted">– {% trans "How easy was it to interact with the Health Engagement Navigator?" %} <span class="text-danger">*</span></span></label>
+          <label class="form-label"><strong>{% trans "1. Ease of Use" %}</strong> <span class="text-muted">– {% trans "How easy was it to interact with the Community Engagement Compass?" %} <span class="text-danger">*</span></span></label>
           {{ form.ease_of_use }}
           {% if form.ease_of_use.errors %}
             <div class="text-danger small">{{ form.ease_of_use.errors|striptags }}</div>
